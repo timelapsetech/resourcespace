@@ -1,2 +1,30 @@
 .svn*
 update_check.sh
+
+# Local ResourceSpace config (DB credentials, keys)
+include/config.php
+
+# Runtime storage
+filestore/
+syncdir/
+
+# Composer dependencies (install with: composer install)
+/vendor/
+
+# Local-only bootstrap / helper scripts
+/tools/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Logs / temp
+*.log
+/tmp/
+
+# Built plugin package (optional redistribute)
+/image_sequence-plugin.zip

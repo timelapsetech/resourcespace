@@ -1,0 +1,148 @@
+<?php
+
+include_once __DIR__ . '/../include/image_sequence_functions.php';
+
+function HookImage_sequenceAllInitialise()
+{
+    global $image_sequence_fieldvars;
+
+    config_register_core_fieldvars('Image Sequence plugin', $image_sequence_fieldvars);
+}
+
+/**
+ * Create resource type + fields when the plugin is activated.
+ */
+function HookImage_sequenceAllAfter_activate_plugin($name = '')
+{
+    if ((string) $name !== 'image_sequence') {
+        return false;
+    }
+    image_sequence_ensure_setup();
+
+    return false;
+}
+
+/**
+ * Skip StaticSync import for frames already claimed by an image sequence (or extras).
+ *
+ * @param string $shortpath Relative path under $syncdir
+ * @param string $fullpath Absolute path
+ */
+function HookImage_sequenceAllStaticsync_skip_file(string $shortpath = '', string $fullpath = ''): bool
+{
+    if ($shortpath === '' && $fullpath !== '') {
+        global $syncdir;
+        $shortpath = ltrim(str_replace((string) $syncdir . '/', '', str_replace('\\', '/', $fullpath)), '/');
+    }
+
+    return $shortpath !== '' && image_sequence_should_skip_staticsync_path($shortpath);
+}
+
+/**
+ * After a file upload succeeds: if the resource is Image Sequence type and the
+ * file is a ZIP, expand under the sync root and re-ingest with cadence split.
+ *
+ * @param int $resource_ref Passed as the value of resource_ref from upload_file hook
+ */
+function HookImage_sequenceAllUploadfilesuccess($resource_ref = 0)
+{
+    global $image_sequence_restype;
+
+    if ((int) $image_sequence_restype <= 0) {
+        return false;
+    }
+
+    $ref = (int) $resource_ref;
+    if ($ref <= 0) {
+        return false;
+    }
+
+    $resource = get_resource_data($ref);
+    if (!is_array($resource) || (int) $resource['resource_type'] !== (int) $image_sequence_restype) {
+        return false;
+    }
+
+    if (image_sequence_get_data($ref) !== null) {
+        return false;
+    }
+
+    $ext = strtolower((string) ($resource['file_extension'] ?? ''));
+    $path = get_resource_path($ref, true, '', false, $ext);
+    if ($ext !== 'zip' || !is_file($path)) {
+        return false;
+    }
+
+    $result = image_sequence_ingest_upload_paths([$path], [
+        'created_by' => (int) ($resource['created_by'] ?? 0),
+    ]);
+    // Only remove the placeholder ZIP resource if at least one sequence was created.
+    if (!empty($result['sequences'])) {
+        delete_resource($ref);
+    }
+
+    return false;
+}
+
+function HookImage_sequenceAllBeforedeleteresourcefromdb($ref)
+{
+    image_sequence_cleanup_resource((int) $ref);
+}
+
+/**
+ * Soft-delete moves archive state first; clear is_transcoding so a later
+ * permanent delete is not refused by core.
+ *
+ * @param array|int $resource
+ * @param int       $archive
+ */
+function HookImage_sequenceAllAfter_update_archive_status($resource = [], $archive = 0)
+{
+    global $resource_deletion_state, $image_sequence_restype;
+
+    if (!isset($resource_deletion_state) || (int) $archive !== (int) $resource_deletion_state) {
+        return;
+    }
+    if ((int) $image_sequence_restype <= 0) {
+        return;
+    }
+
+    $refs = is_array($resource) ? $resource : [$resource];
+    foreach ($refs as $ref) {
+        $ref = (int) $ref;
+        if ($ref <= 0) {
+            continue;
+        }
+        $data = get_resource_data($ref);
+        if (!is_array($data) || (int) $data['resource_type'] !== (int) $image_sequence_restype) {
+            continue;
+        }
+        image_sequence_clear_transcoding_lock($ref);
+    }
+}
+
+/**
+ * Register batch proxy rebuild in Admin → Manage jobs / Offline jobs.
+ *
+ * @return list<array<string, mixed>>
+ */
+function HookImage_sequenceAllAddtriggerablejob(): array
+{
+    if (isset($GLOBALS['hook_return_value']) && is_array($GLOBALS['hook_return_value'])) {
+        $existing_scripts = $GLOBALS['hook_return_value'];
+    } else {
+        $existing_scripts = [];
+    }
+
+    $scripts = [
+        ['name' => 'Image Sequence', 'lang_string' => 'image_sequence_section', 'type' => 'group_start'],
+        [
+            'name' => 'Rebuild pending proxies',
+            'lang_string' => 'image_sequence_job_rebuild_proxies',
+            'script_name' => 'process_pending_proxies',
+            'plugin' => 'image_sequence',
+        ],
+        ['name' => 'Image Sequence', 'type' => 'group_end'],
+    ];
+
+    return array_merge($existing_scripts, $scripts);
+}

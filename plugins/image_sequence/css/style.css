@@ -1,0 +1,11 @@
+.image_sequence_rep_frame_panel {
+    margin-top: 0.75em;
+}
+
+.image_sequence_rep_frame_panel .FormHelp {
+    margin-left: 0.75em;
+}
+
+#image_sequence_rep_frame_status {
+    margin-left: 0.5em;
+}

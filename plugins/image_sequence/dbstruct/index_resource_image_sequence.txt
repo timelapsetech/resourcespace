@@ -1,0 +1,1 @@
+resource_image_sequence,1,folder_path,1,folder_path,A,0,,,YES,BTREE,

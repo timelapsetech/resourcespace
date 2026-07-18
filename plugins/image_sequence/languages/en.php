@@ -1,0 +1,53 @@
+<?php
+
+$lang['image_sequence_configuration'] = 'Image Sequence configuration';
+$lang['image_sequence_restype'] = 'Image Sequence resource type';
+$lang['image_sequence_fps_default'] = 'Default playback frame rate (FPS)';
+$lang['image_sequence_auto_split'] = 'Auto-split on capture-time cadence breaks (Ingestr logic)';
+$lang['image_sequence_min_frames'] = 'Minimum frames for an Image Sequence (smaller segments become Photos)';
+$lang['image_sequence_min_files_for_cadence'] = 'Minimum files required to estimate cadence';
+$lang['image_sequence_max_cadence_sample'] = 'Max gap (seconds) included in cadence median';
+$lang['image_sequence_minimum_session_gap'] = 'Always-split session gap (seconds)';
+$lang['image_sequence_minimum_adaptive_gap'] = 'Adaptive split floor for medium/sparse cadence (seconds)';
+$lang['image_sequence_extensions'] = 'Supported still extensions (comma-separated)';
+$lang['image_sequence_upload_subdir'] = 'Staging subfolder under sync root for web uploads';
+$lang['image_sequence_proxy_max_seconds'] = 'Max proxy duration in seconds (0 = unlimited)';
+$lang['image_sequence_framecount_field'] = 'Frame count metadata field';
+$lang['image_sequence_duration_field'] = 'Duration metadata field';
+$lang['image_sequence_fps_field'] = 'Playback FPS metadata field';
+$lang['image_sequence_repframe_field'] = 'Representative frame metadata field';
+$lang['image_sequence_cadence_field'] = 'Detected capture cadence metadata field';
+$lang['image_sequence_folder_field'] = 'Sequence folder metadata field';
+$lang['image_sequence_photo_restype'] = 'Resource type for extras (non-sequence stills)';
+
+$lang['image_sequence_generating_preview'] = 'Generating sequence preview…';
+$lang['image_sequence_proxy_failed'] = 'Sequence preview generation failed.';
+$lang['image_sequence_use_rep_frame'] = 'Use as representative frame';
+$lang['image_sequence_rep_frame_set'] = 'Representative frame updated (metadata extracted).';
+$lang['image_sequence_rep_frame_failed'] = 'Could not set representative frame.';
+$lang['image_sequence_rep_frame_no_files'] = 'Sequence frame files are missing on disk.';
+$lang['image_sequence_rep_frame_saving'] = 'Saving representative frame…';
+$lang['image_sequence_rep_frame_current'] = 'saved';
+$lang['image_sequence_current_frame'] = 'Frame';
+$lang['image_sequence_download_zip'] = 'Download sequence as ZIP';
+$lang['image_sequence_download_queued'] = 'Sequence ZIP download has been queued. You will be notified when it is ready.';
+$lang['image_sequence_no_data'] = 'No image sequence data found for this resource.';
+$lang['image_sequence_section'] = 'Image sequence';
+
+$lang['resourcetype-image-sequence'] = 'Image Sequence';
+$lang['page-title_image_sequence_ingest'] = 'Ingest Image Sequences';
+$lang['image_sequence_ingest_intro'] = 'Upload a ZIP or multiple stills. Files are staged under the sync root (not filestore), then split by capture-time cadence into Image Sequence resources and leftover Photos.';
+$lang['image_sequence_ingest_files_label'] = 'Files';
+$lang['image_sequence_ingest_submit'] = 'Ingest';
+$lang['image_sequence_ingest_no_files'] = 'No files uploaded.';
+$lang['image_sequence_ingest_result'] = 'Created %seq% sequence(s) and %photo% photo(s).';
+$lang['image_sequence_ingest_sequence_link'] = 'Sequence #%ref%';
+$lang['image_sequence_syncdir_required'] = 'Set $syncdir in include/config.php so sequence frames can stay on disk outside filestore. Without it, ingest and sync cannot run.';
+$lang['image_sequence_setup_requirements'] = 'Requirements: $syncdir must be set; FFmpeg and ExifTool should be available for proxy video and metadata. After activating, open this setup page once, then schedule plugins/image_sequence/pages/tools/image_sequence_sync.php (and ensure the core staticsync_skip_file hook is present — see readme.txt).';
+$lang['image_sequence_setup_ingest_link'] = 'Open Image Sequence ingest';
+$lang['image_sequence_team_tooltip'] = 'Ingest ZIP or still folders as Image Sequence resources';
+$lang['image_sequence_permission_access'] = 'Can access Image Sequence ingest (Team centre)';
+$lang['image_sequence_job_rebuild_proxies'] = 'Rebuild pending/failed sequence proxies';
+$lang['image_sequence_job_rebuild_proxies_intro'] = 'Queue a job that regenerates FFmpeg proxy videos for Image Sequence resources whose proxy is pending, failed, or stuck processing.';
+$lang['image_sequence_job_rebuild_proxies_success'] = 'Image Sequence proxies rebuilt (%count% ready).';
+$lang['image_sequence_job_rebuild_proxies_failed'] = 'Image Sequence proxy rebuild finished with errors (ok=%ok%, failed=%fail%).';
