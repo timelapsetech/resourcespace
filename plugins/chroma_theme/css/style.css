@@ -1,0 +1,1252 @@
+/*
+ * Chroma Theme — cinematic, image-forward DAM UI
+ * Inspired by Aria / chroma-canvas-repo
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Design tokens                                                              */
+/* -------------------------------------------------------------------------- */
+
+:root {
+    /* Map ResourceSpace tokens → deep cinematic dark + amber/magenta accents */
+    --chroma-bg: #1c1b24;
+    --chroma-surface: #23222c;
+    --chroma-surface-2: #2c2b38;
+    --chroma-surface-3: #37364a;
+    --chroma-fg: #f5f4f8;
+    --chroma-muted: #a8a6b5;
+    --chroma-border: rgba(255, 255, 255, 0.08);
+    --chroma-amber: #e8b84a;
+    --chroma-amber-fg: #1a1408;
+    --chroma-magenta: #d45bb8;
+    --chroma-blue: #6b8cff;
+    --chroma-radius: 12px;
+    --chroma-radius-lg: 20px;
+    --chroma-glow: 0 20px 60px -20px rgba(212, 91, 184, 0.35);
+    --chroma-card-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.55);
+    --chroma-font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+    --chroma-font-sans: "Inter", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    --chroma-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    --colour-brand-primary-dark: #c49a2e;
+    --colour-brand-primary-darkest: #8a6a1a;
+    --colour-brand-primary-default: #e8b84a;
+    --colour-brand-primary-hover: #f0c965;
+    --colour-brand-primary-light: #3a3420;
+    --colour-brand-primary-lightest: #2a2618;
+
+    --colour-neutral-50: #f5f4f8;
+    --colour-neutral-100: #e8e6ef;
+    --colour-neutral-200: #c9c6d4;
+    --colour-neutral-300: #a8a6b5;
+    --colour-neutral-400: #7e7c8f;
+    --colour-neutral-500: #5c5a6e;
+    --colour-neutral-600: #454355;
+    --colour-neutral-700: #37364a;
+    --colour-neutral-800: #2c2b38;
+    --colour-neutral-850: #23222c;
+    --colour-neutral-900: #1c1b24;
+    --colour-neutral-950: #14131a;
+    --colour-neutral-1000: #0c0b10;
+
+    --colour-surface-50: var(--colour-neutral-1000);
+    --colour-surface-100: var(--colour-neutral-900);
+    --colour-surface-200: var(--colour-neutral-800);
+    --colour-surface-300: var(--colour-neutral-700);
+    --colour-surface-400: var(--colour-neutral-600);
+    --colour-surface-500: var(--colour-neutral-500);
+    --colour-surface-600: var(--colour-neutral-400);
+    --colour-surface-700: var(--colour-neutral-300);
+    --colour-surface-800: var(--colour-neutral-200);
+    --colour-surface-900: var(--colour-neutral-100);
+    --colour-surface-1000: var(--colour-neutral-50);
+
+    --colour-surface-breadcrumb-background: var(--chroma-surface-2);
+    --colour-surface-card-accent: var(--chroma-amber);
+    --colour-surface-card-content-background: var(--chroma-surface);
+    --colour-surface-card-icon: var(--chroma-muted);
+    --colour-surface-card-icon-background: var(--chroma-surface-2);
+    --colour-surface-card-icon-background-hover: var(--chroma-surface-3);
+    --colour-surface-card-icon-container: rgba(0, 0, 0, 0.35);
+    --colour-surface-card-image-background: #0a090e;
+    --colour-surface-header-background: rgba(20, 19, 26, 0.72);
+    --colour-surface-mode-surface: var(--chroma-surface);
+    --colour-surface-page-title-background: var(--chroma-surface);
+    --colour-surface-uploader-background: var(--chroma-surface-2);
+    --colour-surface-view-background: var(--chroma-bg);
+
+    --colour-typography-50: var(--colour-neutral-1000);
+    --colour-typography-100: var(--colour-neutral-900);
+    --colour-typography-200: var(--colour-neutral-800);
+    --colour-typography-300: var(--colour-neutral-700);
+    --colour-typography-400: var(--colour-neutral-600);
+    --colour-typography-500: var(--colour-neutral-500);
+    --colour-typography-600: var(--colour-neutral-400);
+    --colour-typography-700: var(--colour-neutral-300);
+    --colour-typography-800: var(--colour-neutral-200);
+    --colour-typography-900: var(--colour-neutral-100);
+    --colour-typography-1000: var(--colour-neutral-50);
+
+    --colour-link-primary-default: var(--chroma-amber);
+    --colour-link-primary-hover: var(--chroma-fg);
+
+    --form-field-border: rgba(255, 255, 255, 0.14);
+    --form-focus: var(--chroma-amber);
+    --form-form-chip-background: rgba(212, 91, 184, 0.15);
+    --form-form-chip-label: var(--chroma-fg);
+    --form-form-chip-stroke: rgba(212, 91, 184, 0.35);
+    --form-form-divider: var(--chroma-border);
+    --form-form-field-background: var(--chroma-surface-2);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Base / page chrome                                                         */
+/* -------------------------------------------------------------------------- */
+
+html,
+body {
+    background-color: var(--chroma-bg) !important;
+    color: var(--chroma-fg);
+    font-family: var(--chroma-font-sans);
+    -webkit-font-smoothing: antialiased;
+}
+
+body.chroma-theme {
+    background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212, 91, 184, 0.14), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 90% 110%, rgba(107, 140, 255, 0.1), transparent 60%);
+    background-attachment: fixed;
+}
+
+body.chroma-theme h1,
+body.chroma-theme h2,
+body.chroma-theme .RecordPanel .Title,
+body.chroma-theme .Title,
+body.chroma-theme .resource-card-title {
+    font-family: var(--chroma-font-display);
+    letter-spacing: -0.02em;
+    font-weight: 400;
+}
+
+#UICenter,
+#CentralSpaceContainer,
+#CentralSpace {
+    background: transparent;
+}
+
+/* Glass header */
+#header-container {
+    background: var(--colour-surface-header-background) !important;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-bottom: 1px solid var(--chroma-border);
+}
+
+.header-search-field .input-wrapper {
+    background: var(--chroma-surface-2) !important;
+    border: 1px solid var(--chroma-border) !important;
+    border-radius: 999px !important;
+}
+
+.header-search-field .input-wrapper > input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(232, 184, 74, 0.35);
+}
+
+/* Buttons → pill / amber primary */
+button,
+input[type="submit"],
+input[type="button"],
+.UploadButton a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend a {
+    border-radius: 999px !important;
+}
+
+button.Primary,
+input.Primary,
+a.Primary,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend a {
+    background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
+    color: var(--chroma-fg) !important;
+    border: none !important;
+    box-shadow: var(--chroma-glow);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Search / gallery — image-forward cards                                     */
+/* -------------------------------------------------------------------------- */
+
+#CentralSpaceResources {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px !important;
+    padding: 20px 24px 48px !important;
+    flex-wrap: unset !important;
+}
+
+#CentralSpaceResources > .BasicsBox {
+    grid-column: 1 / -1;
+}
+
+.resource-card {
+    position: relative;
+    width: 100% !important;
+    max-width: none;
+    border-radius: var(--chroma-radius-lg) !important;
+    overflow: hidden;
+    background: var(--chroma-surface) !important;
+    border: 1px solid var(--chroma-border);
+    box-shadow: var(--chroma-card-shadow);
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+.resource-card.normal,
+.resource-card.xl {
+    width: 100% !important;
+}
+
+.resource-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--chroma-glow), var(--chroma-card-shadow);
+}
+
+.resource-card-action-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    padding: 10px !important;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.resource-card:hover .resource-card-action-bar,
+.resource-card.Selected .resource-card-action-bar {
+    opacity: 1;
+}
+
+.resource-card-action-bar .check {
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 6px !important;
+    color: #fff;
+}
+
+.resource-card-action-menu {
+    color: #fff;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.resource-card-image,
+.resource-card-image.normal,
+.resource-card-image.xl {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 4 / 5;
+    display: block !important;
+    position: relative;
+    overflow: hidden;
+    background: #0a090e;
+}
+
+.resource-card-image .ImageColourWrapper,
+.resource-card-image img,
+.resource-card-image .Picture {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block;
+    transition: transform 0.6s ease;
+}
+
+.resource-card:hover .resource-card-image img {
+    transform: scale(1.04);
+}
+
+/* Overlay content on image bottom — Aria AssetCard pattern */
+.resource-card-content {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    padding: 48px 14px 14px !important;
+    background: linear-gradient(0deg, rgba(12, 11, 16, 0.92) 0%, rgba(12, 11, 16, 0.55) 55%, transparent 100%);
+    flex: none !important;
+    pointer-events: none;
+}
+
+.resource-card-content a,
+.resource-card-content button,
+.resource-card-add-remove {
+    pointer-events: auto;
+}
+
+.resource-card-content-top {
+    row-gap: 4px !important;
+    padding-bottom: 6px !important;
+}
+
+.resource-card-field {
+    display: none;
+}
+
+.resource-card-title {
+    color: var(--chroma-fg) !important;
+    font-size: 1.15rem !important;
+    line-height: 1.15 !important;
+    font-family: var(--chroma-font-display) !important;
+}
+
+.resource-card-title a:is(:active, :hover, :link, :visited) {
+    color: var(--chroma-fg) !important;
+}
+
+.resource-card-pill-bar {
+    padding-bottom: 6px !important;
+}
+
+.resource-card-pill {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: var(--chroma-fg) !important;
+    backdrop-filter: blur(8px);
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.resource-card-type {
+    color: var(--chroma-muted) !important;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+}
+
+.resource-card-add-remove {
+    border-color: rgba(255, 255, 255, 0.55) !important;
+    color: #fff !important;
+}
+
+.resource-card-add-remove:hover,
+.resource-card-add-remove.removeFromCollection:not(.DisplayNone) {
+    background: var(--chroma-amber) !important;
+    border-color: var(--chroma-amber) !important;
+    color: var(--chroma-amber-fg) !important;
+}
+
+/* Featured / first card emphasis when JS marks it */
+.resource-card.chroma-span-2 {
+    grid-column: span 2;
+    grid-row: span 2;
+}
+
+.resource-card.chroma-span-2 .resource-card-image {
+    aspect-ratio: 1 / 1;
+}
+
+.resource-card.chroma-span-2 .resource-card-title {
+    font-size: 1.75rem !important;
+}
+
+@media (max-width: 700px) {
+    .resource-card.chroma-span-2 {
+        grid-column: span 1;
+        grid-row: span 1;
+    }
+}
+
+/* Sticky search toolbar — glass strip over results */
+.TopInpageNav {
+    background: rgba(28, 27, 36, 0.72) !important;
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border-bottom: 1px solid var(--chroma-border);
+    border-radius: 0;
+    margin: 0 !important;
+    padding: 12px 24px !important;
+}
+
+.TopInpageNav a,
+.TopInpageNav .Selected {
+    border-radius: 999px;
+}
+
+/* Home dashboard — quieter tiles, more image focus */
+.HomePanelIN,
+.HomePanel {
+    background: var(--chroma-surface) !important;
+    border: 1px solid var(--chroma-border) !important;
+    border-radius: var(--chroma-radius-lg) !important;
+    overflow: hidden;
+}
+
+.BasicsBox h1,
+.SearchBreadcrumb,
+.PageTitle {
+    font-family: var(--chroma-font-display) !important;
+    letter-spacing: -0.02em;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resource / asset detail — cinematic stage + split metadata                 */
+/* -------------------------------------------------------------------------- */
+
+.RecordBox {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+.RecordPanel {
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+.RecordPanel .RecordHeader {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 16px 20px !important;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.75), transparent);
+    color: #fff;
+    pointer-events: none;
+}
+
+.RecordPanel .RecordHeader a,
+.RecordPanel .RecordHeader button,
+.RecordPanel .RecordHeader .backlink,
+.RecordPanel .RecordHeader select {
+    pointer-events: auto;
+}
+
+.RecordPanel .RecordHeader h1,
+.RecordPanel .RecordHeader .Title {
+    color: #fff !important;
+    font-size: clamp(1.1rem, 2vw, 1.35rem) !important;
+    margin: 0;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+
+.RecordResource {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0;
+    position: relative;
+}
+
+/* Stage — full-bleed preview (column stack so player + controls stay vertical) */
+#previewimagewrapper {
+    float: none !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    background: #000;
+    position: relative;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    min-height: 0;
+    overflow: visible;
+    box-sizing: border-box;
+}
+
+/* Still-image fade only — not on sequence/video players (controls live below the media) */
+#previewimagewrapper:not(.image_sequence_omakase_wrap):has(> a #previewimage)::after,
+#previewimagewrapper:not(.image_sequence_omakase_wrap):has(> #previewimage)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 96px;
+    background: linear-gradient(0deg, var(--chroma-bg), transparent);
+    pointer-events: none;
+    z-index: 2;
+}
+
+#previewimagewrapper .Picture,
+#previewimagewrapper img,
+#previewimagewrapper video,
+#previewimage {
+    max-width: 100% !important;
+    max-height: min(72vh, 820px) !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 auto;
+    object-fit: contain;
+    display: block;
+}
+
+#openseadragon_viewer {
+    width: 100% !important;
+    height: min(72vh, 820px) !important;
+}
+
+/* Image Sequence / Omakase — full-width stage, player above NLE controls */
+#previewimagewrapper.image_sequence_omakase_wrap {
+    float: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 0 8px;
+    background: #0b0b0c;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player {
+    flex: 0 0 auto;
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+    --omakase-player-width: 100%;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player video,
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player canvas,
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player .video-js,
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player > * {
+    max-width: 100% !important;
+    max-height: min(68vh, 760px) !important;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_nle {
+    flex: 0 0 auto;
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--chroma-border) !important;
+    background: var(--chroma-surface) !important;
+    position: relative;
+    z-index: 3;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_frame_overlay {
+    z-index: 4;
+}
+
+/* Standard Video.js preview — same vertical stack rules */
+#previewimagewrapper .video-js,
+#previewimagewrapper > video {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto;
+}
+
+/* Download / tools — single card with real top tabs */
+.RecordPanel .RecordDownload,
+#RecordDownloadTabContainer.RecordDownload,
+.chroma-asset-aside .RecordDownload {
+    float: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--chroma-surface) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--chroma-radius-lg) !important;
+    box-shadow: none !important;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* Metadata body grid — applied when JS wraps content */
+.chroma-asset-body {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 24px 24px 64px;
+    margin-top: 0;
+    position: relative;
+    z-index: 5;
+}
+
+/* Slight overlap only for still-image stages (fade into metadata) */
+.RecordResource:not(:has(.image_sequence_omakase_wrap)) > .chroma-asset-body {
+    margin-top: -32px;
+    padding-top: 8px;
+}
+
+@media (min-width: 1024px) {
+    .chroma-asset-body {
+        grid-template-columns: 1fr minmax(320px, 400px);
+        gap: 32px;
+        padding: 28px 40px 80px;
+    }
+}
+
+.chroma-asset-main,
+.chroma-asset-aside {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+/* Title block below stage */
+.chroma-title-block {
+    margin-bottom: 8px;
+    padding: 0 4px;
+}
+
+.chroma-title-block .chroma-eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--chroma-muted);
+    margin-bottom: 8px;
+}
+
+.chroma-title-block h1,
+.chroma-title-block .chroma-title {
+    font-family: var(--chroma-font-display);
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--chroma-fg);
+    margin: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Shared panel cards                                                         */
+/* -------------------------------------------------------------------------- */
+
+.chroma-panel,
+#Metadata .TabbedPanel,
+#Metadata .NonMetadataProperties,
+.chroma-asset-aside .NonMetadataProperties,
+.ViewPanel {
+    background: var(--chroma-surface) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--chroma-radius-lg) !important;
+    padding: 22px 24px !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+}
+
+/* Download panels are body panes inside the RecordDownload card — not separate cards */
+.RecordDownload .RecordDownloadSpace,
+.RecordPanel .RecordDownloadSpace,
+#DownloadsTab,
+#ResourceWorkflowActions,
+#RecordDownloadSummary {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 20px 24px 22px !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    float: none !important;
+    width: 100% !important;
+    box-sizing: border-box;
+}
+
+.ViewPanelTitles,
+#Metadata > .Title,
+#Panel1 > .Title,
+.chroma-asset-main > .Title {
+    display: none !important;
+}
+
+#Panel1.ViewPanel {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+#Metadata {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tabs                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/* Metadata field-group tabs stay as pills */
+#Metadata .TabBar {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0 0 4px !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+#Metadata .TabBar .Tab,
+#Metadata .TabBar .TabSelected {
+    display: inline-flex !important;
+    float: none !important;
+    margin: 0 !important;
+}
+
+#Metadata .TabBar .Tab a,
+#Metadata .TabBar .TabSelected a {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+    padding: 8px 16px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    background: var(--chroma-surface-2) !important;
+    color: var(--chroma-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    line-height: 1.2;
+    text-transform: none !important;
+    letter-spacing: 0.02em;
+    text-decoration: none !important;
+    box-shadow: none !important;
+}
+
+#Metadata .TabBar .Tab a:hover {
+    color: var(--chroma-fg) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    background: var(--chroma-surface-3) !important;
+}
+
+#Metadata .TabBar .TabSelected a {
+    background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+/* Downloads / tools — genuine top tabs attached to the card */
+.RecordDownload .TabBar,
+#RecordDownloadTabButtons {
+    display: flex !important;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(0, 0, 0, 0.22) !important;
+    border-radius: 0 !important;
+}
+
+.RecordDownload .TabBar .Tab,
+.RecordDownload .TabBar .TabSelected,
+#RecordDownloadTabButtons .Tab,
+#RecordDownloadTabButtons .TabSelected {
+    display: flex !important;
+    float: none !important;
+    margin: 0 !important;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.RecordDownload .TabBar .Tab a,
+.RecordDownload .TabBar .TabSelected a,
+#RecordDownloadTabButtons .Tab a,
+#RecordDownloadTabButtons .TabSelected a {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 0 !important;
+    padding: 13px 14px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    background: transparent !important;
+    color: var(--chroma-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
+    text-transform: none !important;
+    letter-spacing: 0.01em;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    white-space: nowrap;
+}
+
+.RecordDownload .TabBar .Tab a:hover,
+#RecordDownloadTabButtons .Tab a:hover {
+    color: var(--chroma-fg) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.RecordDownload .TabBar .TabSelected a,
+#RecordDownloadTabButtons .TabSelected a {
+    color: var(--chroma-fg) !important;
+    background: var(--chroma-surface) !important;
+    border-bottom-color: var(--chroma-amber) !important;
+}
+
+#Metadata .TabbedPanel {
+    display: block !important;
+    clear: none !important;
+}
+
+#Metadata .TabbedPanelInner {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    margin: 0;
+}
+
+/* Section eyebrow labels */
+#Metadata .NonMetadataProperties::before,
+.chroma-asset-aside .NonMetadataProperties::before,
+#Metadata .TabbedPanel::before {
+    display: block;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--chroma-muted);
+    margin: 0 0 16px;
+    padding: 0;
+}
+
+#Metadata .NonMetadataProperties::before,
+.chroma-asset-aside .NonMetadataProperties::before {
+    content: "Overview";
+}
+
+#Metadata .TabbedPanel::before {
+    content: "Description & Fields";
+}
+
+/* No fake section title inside downloads — the tabs are the header */
+.RecordDownloadSpace::before {
+    content: none !important;
+    display: none !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Meta rows — padded label / value                                           */
+/* -------------------------------------------------------------------------- */
+
+#Metadata .item,
+#Metadata .itemNarrow,
+.RecordPanel .item,
+.RecordPanel .itemNarrow,
+.chroma-asset-aside .itemNarrow {
+    float: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 12px 4px !important;
+    border-bottom: 1px solid var(--chroma-border);
+    display: flex !important;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    box-sizing: border-box;
+}
+
+#Metadata .item:first-of-type,
+#Metadata .itemNarrow:first-of-type,
+.chroma-asset-aside .itemNarrow:first-of-type {
+    padding-top: 4px !important;
+}
+
+#Metadata .item:last-child,
+#Metadata .itemNarrow:last-child,
+.chroma-asset-aside .itemNarrow:last-child {
+    border-bottom: none;
+    padding-bottom: 4px !important;
+}
+
+#Metadata .item h3,
+#Metadata .itemNarrow h3,
+.RecordPanel .item h3,
+.RecordPanel .itemNarrow h3,
+.chroma-asset-aside .itemNarrow h3 {
+    margin: 0 !important;
+    padding: 0 !important;
+    flex: 0 1 44%;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    text-transform: none !important;
+    letter-spacing: 0;
+    color: var(--chroma-muted) !important;
+    font-family: var(--chroma-font-sans) !important;
+    line-height: 1.45;
+}
+
+#Metadata .item p,
+#Metadata .itemNarrow p,
+.RecordPanel .item p,
+.RecordPanel .itemNarrow p,
+.chroma-asset-aside .itemNarrow p {
+    margin: 0 !important;
+    padding: 0 !important;
+    flex: 1 1 auto;
+    text-align: right;
+    font-family: var(--chroma-font-mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--chroma-fg);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+/* Long descriptive fields (title, caption, keywords) — stack vertically */
+#Metadata .item.chroma-field-block,
+#Metadata .itemNarrow.chroma-field-block {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 14px 4px !important;
+}
+
+#Metadata .item.chroma-field-block h3,
+#Metadata .itemNarrow.chroma-field-block h3 {
+    flex: none;
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.18em !important;
+    color: var(--chroma-muted) !important;
+}
+
+#Metadata .item.chroma-field-block p,
+#Metadata .itemNarrow.chroma-field-block p {
+    text-align: left;
+    font-family: var(--chroma-font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(245, 244, 248, 0.92);
+}
+
+/* Keyword / tag chips */
+#Metadata .keywordselected,
+#Metadata .customFieldLabel,
+.SearchSimilar .customFieldLabel {
+    background: rgba(212, 91, 184, 0.15) !important;
+    border: 1px solid rgba(212, 91, 184, 0.3) !important;
+    color: var(--chroma-fg) !important;
+    border-radius: 999px !important;
+    padding: 4px 12px !important;
+    font-size: 12px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Downloads table + resource tools                                           */
+/* -------------------------------------------------------------------------- */
+
+.RecordPanel .RecordDownload table,
+.RecordDownload #ResourceDownloadOptions {
+    width: 100% !important;
+    border-collapse: collapse;
+    margin: 0 !important;
+    background: transparent !important;
+}
+
+.RecordPanel .RecordDownload table tbody {
+    max-height: none !important;
+    display: table-row-group !important;
+}
+
+.RecordPanel .RecordDownload #ResourceDownloadOptionsHeader {
+    display: none;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend,
+.RecordDownload .DownloadDBlend {
+    background: transparent !important;
+    border: none !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend td,
+.RecordDownload .DownloadDBlend td {
+    border-top: none !important;
+    border-bottom: 1px solid var(--chroma-border) !important;
+    padding: 14px 4px !important;
+    vertical-align: middle !important;
+    background: transparent !important;
+    color: var(--chroma-fg) !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend td:first-child,
+.RecordDownload .DownloadDBlend td:first-child {
+    padding-left: 2px !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend td:last-child,
+.RecordDownload .DownloadDBlend td:last-child {
+    padding-right: 2px !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend:last-child td {
+    border-bottom: none !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend h2,
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadFileName,
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadFileName h2,
+.RecordPanel .RecordDownload .DownloadDBlend td > span,
+.RecordPanel .RecordDownload .DownloadDBlend td > div {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    color: var(--chroma-fg) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.35;
+    display: block;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend p,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend p {
+    margin: 4px 0 0 !important;
+    padding: 0 !important;
+    color: var(--chroma-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.45;
+    font-family: var(--chroma-font-mono);
+    text-align: left !important;
+    background: transparent !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadButton {
+    text-align: right !important;
+    white-space: nowrap;
+    width: 1%;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadButton a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton a {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px !important;
+    margin: 0 0 0 6px !important;
+    min-width: 0;
+    border-radius: 999px !important;
+    background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 600;
+    text-decoration: none !important;
+    box-shadow: none !important;
+    line-height: 1.2;
+    border: none !important;
+}
+
+/* Nested RecordTools box — flatten into the tab panel */
+.RecordDownload .RecordTools,
+.RecordPanel .RecordDownload .RecordTools,
+.RecordPanel .RecordDownloadSpace .RecordTools {
+    display: block !important;
+    float: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 16px 0 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-sizing: border-box;
+}
+
+#ResourceToolsContainer {
+    list-style: none;
+    margin: 0 !important;
+    padding: 16px 0 0 !important;
+    border-top: 1px solid var(--chroma-border);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    float: none !important;
+    width: 100% !important;
+    background: transparent !important;
+}
+
+#ResourceToolsContainer li {
+    float: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+}
+
+#ResourceToolsContainer li a,
+#ResourceToolsContainer li a:link,
+#ResourceToolsContainer li a:visited {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px !important;
+    margin: 0 !important;
+    border-radius: 10px;
+    color: rgba(245, 244, 248, 0.82) !important;
+    text-decoration: none !important;
+    font-size: 13px;
+    line-height: 1.3;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#ResourceToolsContainer li a:hover {
+    background: var(--chroma-surface-2) !important;
+    color: var(--chroma-fg) !important;
+}
+
+#ResourceToolsContainer li a i,
+#ResourceToolsContainer li a .icon {
+    width: 18px;
+    flex: 0 0 18px;
+    opacity: 0.85;
+}
+
+#ResourceToolsContainer h2 {
+    display: none;
+}
+
+/* Hide clearerleft only inside restyled asset / gallery regions */
+.RecordResource > .clearerleft,
+#Metadata .clearerleft,
+.chroma-asset-body .clearerleft,
+.chroma-asset-aside .clearerleft,
+#CentralSpaceResources .clearerleft {
+    display: none;
+}
+
+/* Fallback layout before JS wraps the body (preview full-width, panels stacked) */
+.RecordResource > .RecordDownload,
+.RecordResource > #Panel1,
+.RecordResource > #Metadata {
+    width: min(1100px, calc(100% - 48px));
+    margin: 24px auto !important;
+}
+
+.RecordResource > .RecordDownload {
+    margin-top: 8px !important;
+}
+
+/* Modal resource view — immersive */
+#modal .RecordBox,
+#modal .RecordPanel {
+    background: var(--chroma-bg) !important;
+}
+
+#modal #previewimagewrapper:not(.image_sequence_omakase_wrap) {
+    min-height: 0;
+}
+
+#modal #previewimagewrapper:not(.image_sequence_omakase_wrap) .Picture,
+#modal #previewimagewrapper:not(.image_sequence_omakase_wrap) img,
+#modal #previewimagewrapper:not(.image_sequence_omakase_wrap) #previewimage {
+    max-height: min(60vh, 640px) !important;
+}
+
+#modal .chroma-asset-body {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+@media (min-width: 1024px) {
+    #modal .chroma-asset-body {
+        padding-left: 28px;
+        padding-right: 28px;
+    }
+}
+
+/* Collection bar — style only the visible chrome, never #CollectionDiv itself.
+   #CollectionDiv is a tall fixed wrapper; painting it covers the page when the
+   bar is collapsed via translateY. */
+#CollectionDiv {
+    background: transparent !important;
+    border: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+.collection-bar-holder {
+    background: transparent !important;
+}
+
+.collection-bar-actions-section,
+.collection-bar-thumbs-section {
+    background: rgba(20, 19, 26, 0.92) !important;
+    border-top: 1px solid var(--chroma-border);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.collection-bar-holder .collection-bar-toggle-button {
+    background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
+    border-radius: 12px 12px 0 0 !important;
+    color: #fff !important;
+}
+
+.collection-bar-holder:not(.state-closed) .collection-bar-toggle-button {
+    background: var(--chroma-surface-2) !important;
+}
+
+.collection-bar-holder:not(.state-closed) .collection-bar-toggle-button:hover {
+    background: var(--chroma-surface-3) !important;
+}
+
+/* Home / featured collection cards */
+.FeaturedSimpleTile,
+.FeaturedSimplePanel,
+.HomePanel {
+    border-radius: var(--chroma-radius-lg) !important;
+    overflow: hidden;
+    border: 1px solid var(--chroma-border);
+    box-shadow: var(--chroma-card-shadow);
+}
+
+/* Forms */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="search"],
+textarea,
+select {
+    background: var(--chroma-surface-2) !important;
+    color: var(--chroma-fg) !important;
+    border-color: var(--chroma-border) !important;
+    border-radius: 10px !important;
+}
+
+/* Flyout menus */
+.flyout-menu {
+    background: var(--chroma-surface) !important;
+    border: 1px solid var(--chroma-border);
+    border-radius: 12px !important;
+    box-shadow: var(--chroma-card-shadow) !important;
+}
+
+/* Pagination / result count */
+.TopInpageNav {
+    padding: 12px 24px !important;
+}
+
+/* Login page */
+#login_box,
+.login {
+    background: var(--chroma-surface) !important;
+    border-radius: var(--chroma-radius-lg);
+    border: 1px solid var(--chroma-border);
+}
