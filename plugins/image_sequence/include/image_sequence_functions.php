@@ -11,8 +11,8 @@ include_once dirname(__DIR__, 3) . '/include/image_processing.php';
 function image_sequence_ensure_setup(): void
 {
     global $image_sequence_restype, $image_sequence_framecount_field, $image_sequence_duration_field,
-        $image_sequence_fps_field, $image_sequence_repframe_field, $image_sequence_cadence_field,
-        $image_sequence_folder_field;
+        $image_sequence_fps_field, $image_sequence_repframe_field, $image_sequence_inframe_field,
+        $image_sequence_outframe_field, $image_sequence_cadence_field, $image_sequence_folder_field;
 
     $config = get_plugin_config('image_sequence') ?: [];
     $changed = false;
@@ -46,9 +46,13 @@ function image_sequence_ensure_setup(): void
         'image_sequence_duration_field' => ['Duration', 'imgseq_duration'],
         'image_sequence_fps_field' => ['Playback FPS', 'imgseq_fps'],
         'image_sequence_repframe_field' => ['Representative frame', 'imgseq_repframe'],
+        'image_sequence_inframe_field' => ['In point (frame)', 'imgseq_inframe'],
+        'image_sequence_outframe_field' => ['Out point (frame)', 'imgseq_outframe'],
         'image_sequence_cadence_field' => ['Detected cadence (s)', 'imgseq_cadence'],
         'image_sequence_folder_field' => ['Sequence folder', 'imgseq_folder'],
     ];
+
+    image_sequence_ensure_db_columns();
 
     foreach ($fields as $config_key => [$title, $shortname]) {
         $current = (int) ($GLOBALS[$config_key] ?? 0);
@@ -767,6 +771,47 @@ function image_sequence_ensure_db_indexes(): void
     );
 }
 
+/**
+ * Ensure in_frame / out_frame columns exist (CheckDBStruct also adds from dbstruct).
+ */
+function image_sequence_ensure_db_columns(): void
+{
+    $exists = (int) ps_value(
+        "SELECT COUNT(*) value FROM information_schema.tables
+         WHERE table_schema = DATABASE() AND table_name = 'resource_image_sequence'",
+        [],
+        0
+    );
+    if ($exists === 0) {
+        return;
+    }
+
+    $columns = [
+        'in_frame' => 'int(11) NULL DEFAULT 0',
+        'out_frame' => 'int(11) NULL DEFAULT NULL',
+    ];
+    foreach ($columns as $name => $definition) {
+        $has = (int) ps_value(
+            "SELECT COUNT(*) value FROM information_schema.columns
+             WHERE table_schema = DATABASE()
+               AND table_name = 'resource_image_sequence'
+               AND column_name = ?",
+            ['s', $name],
+            0
+        );
+        if ($has > 0) {
+            continue;
+        }
+        ps_query(
+            'ALTER TABLE resource_image_sequence ADD COLUMN ' . $name . ' ' . $definition,
+            [],
+            '',
+            -1,
+            false
+        );
+    }
+}
+
 function image_sequence_is_sequence_resource(array $resource): bool
 {
     global $image_sequence_restype;
@@ -1265,8 +1310,9 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
     ps_query(
         'INSERT INTO resource_image_sequence
             (resource, folder_path, member_files, frame_pattern, start_number, end_number, frame_count,
-             extension, fps, duration_seconds, detected_cadence_seconds, representative_frame, proxy_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+             extension, fps, duration_seconds, detected_cadence_seconds, representative_frame,
+             in_frame, out_frame, proxy_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
             'i', $ref,
             's', $folder_rel,
@@ -1280,6 +1326,8 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
             'd', $duration,
             'd', $cadence,
             'i', 0,
+            'i', 0,
+            'i', max(0, $frame_count - 1),
             's', 'pending',
         ]
     );
@@ -1291,6 +1339,8 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         'cadence' => $cadence,
         'folder' => $folder_rel,
         'representative_frame' => 0,
+        'in_frame' => 0,
+        'out_frame' => max(0, $frame_count - 1),
     ]);
 
     $member_paths = [];
@@ -1314,18 +1364,30 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
 }
 
 /**
- * @param array{frame_count?: int|float, duration?: float, fps?: float, cadence?: float|null, folder?: string, representative_frame?: int} $values
+ * @param array{
+ *   frame_count?: int|float,
+ *   duration?: float,
+ *   fps?: float,
+ *   cadence?: float|null,
+ *   folder?: string,
+ *   representative_frame?: int,
+ *   in_frame?: int,
+ *   out_frame?: int
+ * } $values
  */
 function image_sequence_update_metadata_fields(int $ref, array $values): void
 {
     global $image_sequence_framecount_field, $image_sequence_duration_field, $image_sequence_fps_field,
-        $image_sequence_repframe_field, $image_sequence_cadence_field, $image_sequence_folder_field;
+        $image_sequence_repframe_field, $image_sequence_inframe_field, $image_sequence_outframe_field,
+        $image_sequence_cadence_field, $image_sequence_folder_field;
 
     $map = [
         'frame_count' => $image_sequence_framecount_field,
         'duration' => $image_sequence_duration_field,
         'fps' => $image_sequence_fps_field,
         'representative_frame' => $image_sequence_repframe_field,
+        'in_frame' => $image_sequence_inframe_field,
+        'out_frame' => $image_sequence_outframe_field,
         'cadence' => $image_sequence_cadence_field,
         'folder' => $image_sequence_folder_field,
     ];
@@ -1657,12 +1719,7 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
     }
 
     // Clamp — proxy scrubbing at EOF often reports frame_count (one past last index).
-    if ($frame_index < 0) {
-        $frame_index = 0;
-    }
-    if ($frame_index >= $path_count) {
-        $frame_index = $path_count - 1;
-    }
+    $frame_index = image_sequence_clamp_frame_index($frame_index, $path_count);
 
     ps_query(
         'UPDATE resource_image_sequence SET representative_frame = ? WHERE resource = ?',
@@ -1719,6 +1776,72 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
         'ok' => true,
         'message' => $lang['image_sequence_rep_frame_set'] ?? 'Representative frame updated.',
         'frame' => $frame_index,
+    ];
+}
+
+/**
+ * Clamp a zero-based frame index into [0, path_count - 1].
+ */
+function image_sequence_clamp_frame_index(int $frame_index, int $path_count): int
+{
+    if ($path_count <= 0) {
+        return 0;
+    }
+    if ($frame_index < 0) {
+        return 0;
+    }
+    if ($frame_index >= $path_count) {
+        return $path_count - 1;
+    }
+
+    return $frame_index;
+}
+
+/**
+ * Persist in/out frame points on the sequence and metadata fields.
+ *
+ * @return array{ok: bool, message: string, in_frame?: int, out_frame?: int}
+ */
+function image_sequence_set_inout_frames(int $ref, int $in_frame, int $out_frame): array
+{
+    global $lang;
+
+    $data = image_sequence_get_data($ref);
+    if ($data === null) {
+        return [
+            'ok' => false,
+            'message' => $lang['image_sequence_no_data'] ?? 'No image sequence data found for this resource.',
+        ];
+    }
+
+    $paths = image_sequence_member_absolute_paths($data);
+    $path_count = count($paths);
+    if ($path_count === 0) {
+        $path_count = max(1, (int) ($data['frame_count'] ?? 1));
+    }
+
+    $in_frame = image_sequence_clamp_frame_index($in_frame, $path_count);
+    $out_frame = image_sequence_clamp_frame_index($out_frame, $path_count);
+    if ($out_frame < $in_frame) {
+        $tmp = $in_frame;
+        $in_frame = $out_frame;
+        $out_frame = $tmp;
+    }
+
+    ps_query(
+        'UPDATE resource_image_sequence SET in_frame = ?, out_frame = ? WHERE resource = ?',
+        ['i', $in_frame, 'i', $out_frame, 'i', $ref]
+    );
+    image_sequence_update_metadata_fields($ref, [
+        'in_frame' => $in_frame,
+        'out_frame' => $out_frame,
+    ]);
+
+    return [
+        'ok' => true,
+        'message' => $lang['image_sequence_inout_set'] ?? 'In/out points updated.',
+        'in_frame' => $in_frame,
+        'out_frame' => $out_frame,
     ];
 }
 

@@ -14,7 +14,8 @@ What you get
 - Cadence auto-split: long segments → sequences; short segments → Photos
 - CLI sync over $syncdir (idempotent; skips frames already claimed)
 - Web ingest page (ZIP / multi-file → staged under sync root)
-- Proxy video job + representative-frame scrubber on the view page
+- Proxy video job + Omakase frame-accurate scrubber on the view page
+  (in/out points + representative frame → asset metadata)
 - ZIP download of member frames (inline or offline job)
 
 
@@ -25,6 +26,7 @@ Requirements
 - $syncdir set in include/config.php (absolute path, writable by the web/CLI user)
 - FFmpeg available (same as core video preview)
 - ExifTool available for representative-frame metadata
+- Browser access to jsDelivr CDN for Omakase Player (@byomakase/omakase-player)
 - One small core change (see below) so StaticSync does not re-import claimed frames
 
 
@@ -93,7 +95,9 @@ Upload as Image Sequence type
   same way; the placeholder ZIP resource is removed only if ingest succeeds.
 
 View page
-  Scrub the proxy, set representative frame, download ZIP of frames.
+  Scrub the Omakase proxy player frame-accurately: Mark In / Mark Out, save
+  those points to metadata (imgseq_inframe / imgseq_outframe), set a
+  representative frame, and download a ZIP of frames.
   Setting a representative frame pulls still metadata into the asset:
   width/height/DPI/file size (resource properties) plus camera make/model,
   lens, ISO, aperture, shutter, focal length, bit depth, color space, and

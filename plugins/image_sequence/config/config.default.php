@@ -37,6 +37,8 @@ $image_sequence_framecount_field = 0;
 $image_sequence_duration_field = 0;
 $image_sequence_fps_field = 0;
 $image_sequence_repframe_field = 0;
+$image_sequence_inframe_field = 0;
+$image_sequence_outframe_field = 0;
 $image_sequence_cadence_field = 0;
 $image_sequence_folder_field = 0;
 
@@ -49,6 +51,8 @@ $image_sequence_fieldvars = [
     'image_sequence_duration_field',
     'image_sequence_fps_field',
     'image_sequence_repframe_field',
+    'image_sequence_inframe_field',
+    'image_sequence_outframe_field',
     'image_sequence_cadence_field',
     'image_sequence_folder_field',
 ];

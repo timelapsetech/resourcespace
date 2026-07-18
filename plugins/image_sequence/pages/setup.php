@@ -32,6 +32,8 @@ $page_def[] = config_add_single_ftype_select('image_sequence_framecount_field', 
 $page_def[] = config_add_single_ftype_select('image_sequence_duration_field', $lang['image_sequence_duration_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_fps_field', $lang['image_sequence_fps_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_repframe_field', $lang['image_sequence_repframe_field'], 420);
+$page_def[] = config_add_single_ftype_select('image_sequence_inframe_field', $lang['image_sequence_inframe_field'], 420);
+$page_def[] = config_add_single_ftype_select('image_sequence_outframe_field', $lang['image_sequence_outframe_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_cadence_field', $lang['image_sequence_cadence_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_folder_field', $lang['image_sequence_folder_field'], 420);
 

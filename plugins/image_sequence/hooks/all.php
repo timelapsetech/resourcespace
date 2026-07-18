@@ -10,6 +10,36 @@ function HookImage_sequenceAllInitialise()
 }
 
 /**
+ * Load Omakase Player (CDN) + import map for Image Sequence frame picking.
+ */
+function HookImage_sequenceAllAdditionalheaderjs()
+{
+    global $baseurl_short, $css_reload_key;
+
+    $omakase_ver = '1.1.0';
+    $hls_ver = '1.6.15';
+    $omakase_css = 'https://cdn.jsdelivr.net/npm/@byomakase/omakase-player@'
+        . $omakase_ver . '/dist/omakase-player.css';
+    $omakase_js = 'https://cdn.jsdelivr.net/npm/@byomakase/omakase-player@'
+        . $omakase_ver . '/dist/omakase-player.es.js';
+    $hls_js = 'https://cdn.jsdelivr.net/npm/hls.js@' . $hls_ver . '/dist/hls.mjs';
+    $picker_js = $baseurl_short . 'plugins/image_sequence/js/omakase_frame_picker.js?css_reload_key='
+        . urlencode((string) $css_reload_key);
+    ?>
+    <link rel="stylesheet" href="<?php echo escape($omakase_css); ?>" />
+    <script type="importmap">
+    {
+      "imports": {
+        "hls.js": <?php echo json_encode($hls_js); ?>,
+        "@byomakase/omakase-player": <?php echo json_encode($omakase_js); ?>
+      }
+    }
+    </script>
+    <script type="module" src="<?php echo escape($picker_js); ?>"></script>
+    <?php
+}
+
+/**
  * Create resource type + fields when the plugin is activated.
  */
 function HookImage_sequenceAllAfter_activate_plugin($name = '')
