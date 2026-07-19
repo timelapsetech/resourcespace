@@ -9,10 +9,11 @@ $image_sequence_restype = 0;
 # Playback FPS used for proxy video and catalog duration (not capture cadence).
 $image_sequence_fps_default = 30;
 
-# Allowed absolute roots for in-place frame storage. Empty = use $syncdir when set.
+# Allowed absolute roots for in-place frame storage (read-only). Empty = use $syncdir when set.
+# The plugin never writes into these directories — manifests go to filestore; web uploads to staging.
 $image_sequence_sync_roots = [];
 
-# Relative staging folder under the primary sync root for web ZIP/multi-file uploads.
+# Staging subfolder under filestore ($storagedir) for web ZIP/multi-file uploads (writable).
 $image_sequence_upload_subdir = 'image_sequences';
 
 # Cadence auto-split (ported from Ingestr).

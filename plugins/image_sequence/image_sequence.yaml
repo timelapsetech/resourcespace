@@ -1,8 +1,8 @@
 name: image_sequence
 title: Image Sequence
 author: Dave Klee
-version: 1.5
-desc: Ingest folders of stills as Image Sequence resources (in-place frames, cadence auto-split, Omakase frame-accurate in/out + representative frame, sequence timeline/exposure analysis, AI metadata from representative frame via Ollama). Requires the StaticSync staticsync_skip_file hook — see readme.txt / patches/.
+version: 1.6
+desc: Ingest folders of stills as Image Sequence resources (read-only scan roots, filestore manifests/staging, cadence auto-split, Omakase frame-accurate in/out + representative frame, sequence timeline/exposure analysis, AI metadata from representative frame via Ollama). Requires the StaticSync staticsync_skip_file hook — see readme.txt / patches/.
 icon: images
 icon-colour: steelblue
 config_url: /plugins/image_sequence/pages/setup.php

@@ -829,7 +829,8 @@ function image_sequence_can_access_tools(): bool
 }
 
 /**
- * Primary sync root for staging and relative paths.
+ * Primary scan root (read-only). Used for relative paths of on-disk stills.
+ * Never write into this tree — manifests and uploads go elsewhere.
  */
 function image_sequence_primary_sync_root(): string
 {
@@ -846,13 +847,16 @@ function image_sequence_primary_sync_root(): string
         return rtrim((string) $syncdir, '/');
     }
 
-    return rtrim(get_temp_dir(false), '/');
+    return '';
 }
 
 /**
+ * Scan roots for CLI folder ingest. Treated as read-only: frames are referenced
+ * in place; the plugin must not create, modify, or delete files here.
+ *
  * @return list<string>
  */
-function image_sequence_allowed_roots(): array
+function image_sequence_scan_roots(): array
 {
     global $syncdir, $image_sequence_sync_roots;
 
@@ -868,14 +872,66 @@ function image_sequence_allowed_roots(): array
     if ($roots === [] && !empty($syncdir) && is_dir($syncdir)) {
         $roots[] = rtrim((string) $syncdir, '/');
     }
-    if ($roots === []) {
-        $fallback = image_sequence_primary_sync_root();
-        if ($fallback !== '' && is_dir($fallback)) {
-            $roots[] = $fallback;
-        }
+
+    return array_values(array_unique($roots));
+}
+
+/**
+ * Writable staging root for web ZIP/multi-file uploads (under filestore, not scan roots).
+ */
+function image_sequence_staging_root(): string
+{
+    global $storagedir, $image_sequence_upload_subdir;
+
+    $subdir = trim((string) $image_sequence_upload_subdir, '/');
+    if ($subdir === '') {
+        $subdir = 'image_sequences';
+    }
+
+    $base = !empty($storagedir) ? rtrim((string) $storagedir, '/') : rtrim(get_temp_dir(false), '/');
+    $root = $base . '/' . $subdir;
+    if (!is_dir($root) && !mkdir($root, 0755, true) && !is_dir($root)) {
+        return '';
+    }
+
+    return $root;
+}
+
+/**
+ * Roots allowed for path resolution: read-only scan dirs plus writable staging.
+ *
+ * @return list<string>
+ */
+function image_sequence_allowed_roots(): array
+{
+    $roots = image_sequence_scan_roots();
+
+    $staging = image_sequence_staging_root();
+    if ($staging !== '' && is_dir($staging)) {
+        $roots[] = $staging;
     }
 
     return array_values(array_unique($roots));
+}
+
+/**
+ * Whether an absolute path sits under a configured scan root (read-only stills tree).
+ */
+function image_sequence_path_under_scan_root(string $absolute_path): bool
+{
+    $absolute_path = str_replace('\\', '/', $absolute_path);
+    $absolute_real = realpath($absolute_path) ?: $absolute_path;
+    $absolute_real = str_replace('\\', '/', $absolute_real);
+
+    foreach (image_sequence_scan_roots() as $root) {
+        $root_real = realpath($root) ?: $root;
+        $root_real = rtrim(str_replace('\\', '/', $root_real), '/');
+        if ($absolute_real === $root_real || strpos($absolute_real, $root_real . '/') === 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function image_sequence_path_under_allowed_root(string $absolute_path): bool
@@ -1283,10 +1339,7 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         return 0;
     }
 
-    $manifest_name = '.rs_imagesequence_' . $ref . '.json';
-    $manifest_abs = $folder . '/' . $manifest_name;
-    $manifest_rel = ($folder_rel === '' ? '' : $folder_rel . '/') . $manifest_name;
-
+    // Manifest lives in filestore — never write into the (read-only) scan tree.
     $payload = [
         'resource' => (int) $ref,
         'folder_path' => $folder_rel,
@@ -1299,13 +1352,15 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         'detected_cadence_seconds' => $cadence,
         'created' => date('c'),
     ];
+    $manifest_abs = get_resource_path($ref, true, '', true, 'json');
     file_put_contents($manifest_abs, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
+    // Empty file_path → ResourceSpace resolves the original via filestore.
     ps_query(
         'UPDATE resource SET archive=0, file_path=?, file_extension=?, preview_extension=?, file_modified=NOW(), no_file=0 WHERE ref=?',
-        ['s', $manifest_rel, 's', 'json', 's', 'jpg', 'i', $ref]
+        ['s', '', 's', 'json', 's', 'jpg', 'i', $ref]
     );
-    unset($GLOBALS['get_resource_data_cache'][$ref]);
+    unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
 
     ps_query(
         'INSERT INTO resource_image_sequence
@@ -1934,18 +1989,21 @@ function image_sequence_set_inout_frames(int $ref, int $in_frame, int $out_frame
 }
 
 /**
- * Stage uploaded files/ZIP under sync root and ingest with auto-split.
+ * Stage uploaded files/ZIP under filestore staging (not the read-only scan tree)
+ * and ingest with auto-split.
  *
  * @param list<string> $source_paths Absolute paths to images or a single zip
  * @return array{sequences: list<int>, photos: list<int>, folder: string}
  */
 function image_sequence_ingest_upload_paths(array $source_paths, array $options = []): array
 {
-    global $image_sequence_upload_subdir;
+    $root = image_sequence_staging_root();
+    if ($root === '') {
+        return ['sequences' => [], 'photos' => [], 'folder' => ''];
+    }
 
-    $root = image_sequence_primary_sync_root();
     $batch = 'upload_' . date('Ymd_His') . '_' . substr(md5(uniqid('', true)), 0, 8);
-    $dest = rtrim($root, '/') . '/' . trim($image_sequence_upload_subdir, '/') . '/' . $batch;
+    $dest = rtrim($root, '/') . '/' . $batch;
     if (!is_dir($dest) && !mkdir($dest, 0755, true) && !is_dir($dest)) {
         return ['sequences' => [], 'photos' => [], 'folder' => ''];
     }
@@ -2060,7 +2118,8 @@ function image_sequence_clear_transcoding_lock(int $ref): void
 }
 
 /**
- * Remove plugin rows / manifests when a resource is deleted.
+ * Remove plugin rows / writable manifests when a resource is deleted.
+ * Never deletes or modifies files under scan roots (read-only stills tree).
  */
 function image_sequence_cleanup_resource(int $ref): void
 {
@@ -2068,21 +2127,19 @@ function image_sequence_cleanup_resource(int $ref): void
     image_sequence_clear_transcoding_lock($ref);
 
     $data = image_sequence_get_data($ref);
-    if ($data !== null) {
-        $manifest_rel = '';
-        $resource = get_resource_data($ref);
-        if (is_array($resource) && !empty($resource['file_path'])) {
-            $manifest_rel = (string) $resource['file_path'];
-        } else {
-            $folder = (string) ($data['folder_path'] ?? '');
-            $manifest_rel = ($folder === '' ? '' : $folder . '/') . '.rs_imagesequence_' . $ref . '.json';
-        }
-        $manifest_abs = image_sequence_relative_to_absolute($manifest_rel);
-        if ($manifest_abs !== null && is_file($manifest_abs) && strpos(basename($manifest_abs), '.rs_imagesequence_') === 0) {
-            @unlink($manifest_abs);
-        }
-        ps_query('DELETE FROM resource_image_sequence WHERE resource = ?', ['i', $ref]);
+    if ($data === null) {
+        return;
     }
+
+    // Filestore original (current layout).
+    $filestore_manifest = get_resource_path($ref, true, '', false, 'json');
+    if (is_file($filestore_manifest) && !image_sequence_path_under_scan_root($filestore_manifest)) {
+        @unlink($filestore_manifest);
+    }
+
+    // Legacy: older versions wrote .rs_imagesequence_*.json beside frames.
+    // Leave those untouched so the scan directory stays read-only.
+    ps_query('DELETE FROM resource_image_sequence WHERE resource = ?', ['i', $ref]);
 }
 
 /**

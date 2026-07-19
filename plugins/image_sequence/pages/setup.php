@@ -60,7 +60,11 @@ echo '<div class="PageInformal"><p>' . escape($lang['image_sequence_setup_requir
 if (empty($syncdir)) {
     echo '<p><strong>' . escape($lang['image_sequence_syncdir_required']) . '</strong></p>';
 } else {
-    echo '<p>$syncdir: <code>' . escape((string) $syncdir) . '</code></p>';
+    echo '<p>$syncdir (read-only scan): <code>' . escape((string) $syncdir) . '</code></p>';
+}
+$staging = image_sequence_staging_root();
+if ($staging !== '') {
+    echo '<p>Writable staging: <code>' . escape($staging) . '</code></p>';
 }
 echo '</div>';
 

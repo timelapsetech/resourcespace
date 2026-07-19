@@ -1,11 +1,12 @@
 <?php
 /**
- * CLI/cron: ingest in-place image sequence folders under configured sync roots.
+ * CLI/cron: ingest in-place image sequence folders under configured scan roots
+ * (read-only — frames are referenced, not copied or modified).
  *
  * Usage:
  *   php plugins/image_sequence/pages/tools/image_sequence_sync.php [folder]
  *
- * If folder is omitted, walks each configured sync root one level of subfolders
+ * If folder is omitted, walks each configured scan root one level of subfolders
  * (and root itself) looking for stills.
  */
 
@@ -32,7 +33,7 @@ if ($target !== '') {
     $results['sequences'] = array_merge($results['sequences'], $batch['sequences']);
     $results['photos'] = array_merge($results['photos'], $batch['photos']);
 } else {
-    foreach (image_sequence_allowed_roots() as $root) {
+    foreach (image_sequence_scan_roots() as $root) {
         echo "Scanning {$root}\n";
         // Process immediate subfolders as independent shoot roots, plus files at root.
         $entries = scandir($root) ?: [];

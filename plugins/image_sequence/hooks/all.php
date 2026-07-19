@@ -89,7 +89,7 @@ function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
 
 /**
  * After a file upload succeeds: if the resource is Image Sequence type and the
- * file is a ZIP, expand under the sync root and re-ingest with cadence split.
+ * file is a ZIP, expand under filestore staging and re-ingest with cadence split.
  *
  * @param int $resource_ref Passed as the value of resource_ref from upload_file hook
  */

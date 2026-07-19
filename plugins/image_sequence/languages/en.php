@@ -10,7 +10,7 @@ $lang['image_sequence_max_cadence_sample'] = 'Max gap (seconds) included in cade
 $lang['image_sequence_minimum_session_gap'] = 'Always-split session gap (seconds)';
 $lang['image_sequence_minimum_adaptive_gap'] = 'Adaptive split floor for medium/sparse cadence (seconds)';
 $lang['image_sequence_extensions'] = 'Supported still extensions (comma-separated)';
-$lang['image_sequence_upload_subdir'] = 'Staging subfolder under sync root for web uploads';
+$lang['image_sequence_upload_subdir'] = 'Staging subfolder under filestore for web uploads (not the scan directory)';
 $lang['image_sequence_proxy_max_seconds'] = 'Max proxy duration in seconds (0 = unlimited)';
 $lang['image_sequence_framecount_field'] = 'Frame count metadata field';
 $lang['image_sequence_duration_field'] = 'Duration metadata field';
@@ -68,14 +68,15 @@ $lang['image_sequence_section'] = 'Image sequence';
 
 $lang['resourcetype-image-sequence'] = 'Image Sequence';
 $lang['page-title_image_sequence_ingest'] = 'Ingest Image Sequences';
-$lang['image_sequence_ingest_intro'] = 'Upload a ZIP or multiple stills. Files are staged under the sync root (not filestore), then split by capture-time cadence into Image Sequence resources and leftover Photos.';
+$lang['image_sequence_ingest_intro'] = 'Upload a ZIP or multiple stills. Files are staged under filestore (scan directories stay read-only), then split by capture-time cadence into Image Sequence resources and leftover Photos.';
+$lang['image_sequence_staging_unavailable'] = 'Could not create a writable staging folder under filestore for uploads.';
 $lang['image_sequence_ingest_files_label'] = 'Files';
 $lang['image_sequence_ingest_submit'] = 'Ingest';
 $lang['image_sequence_ingest_no_files'] = 'No files uploaded.';
 $lang['image_sequence_ingest_result'] = 'Created %seq% sequence(s) and %photo% photo(s).';
 $lang['image_sequence_ingest_sequence_link'] = 'Sequence #%ref%';
-$lang['image_sequence_syncdir_required'] = 'Set $syncdir in include/config.php so sequence frames can stay on disk outside filestore. Without it, ingest and sync cannot run.';
-$lang['image_sequence_setup_requirements'] = 'Requirements: $syncdir must be set; FFmpeg and ExifTool should be available for proxy video and metadata. After activating, open this setup page once, then schedule plugins/image_sequence/pages/tools/image_sequence_sync.php (and ensure the core staticsync_skip_file hook is present — see readme.txt).';
+$lang['image_sequence_syncdir_required'] = 'Set $syncdir in include/config.php to scan folders of stills in place (read-only). Web ingest stages under filestore and does not write to $syncdir.';
+$lang['image_sequence_setup_requirements'] = 'Requirements: $syncdir for folder sync (treated as read-only); FFmpeg and ExifTool for proxy video and metadata. Manifests and web staging write to filestore only. After activating, open this setup page once, then schedule plugins/image_sequence/pages/tools/image_sequence_sync.php (and ensure the core staticsync_skip_file hook is present — see readme.txt).';
 $lang['image_sequence_setup_ingest_link'] = 'Open Image Sequence ingest';
 $lang['image_sequence_team_tooltip'] = 'Ingest ZIP or still folders as Image Sequence resources';
 $lang['image_sequence_permission_access'] = 'Can access Image Sequence ingest (Team centre)';

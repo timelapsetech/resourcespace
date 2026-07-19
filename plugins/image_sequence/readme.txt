@@ -3,9 +3,11 @@ Image Sequence plugin for ResourceSpace
 
 Ingest folders of sequentially numbered stills as Image Sequence resources.
 Frames stay on disk under $syncdir (or configured sync roots) — they are not
-copied into filestore. The plugin builds an FFmpeg proxy video for preview,
-supports picking a representative frame (EXIF into metadata), and auto-splits
-large still folders using capture-time cadence (Ingestr-style).
+copied into filestore, and that scan tree is treated as read-only (no manifests
+or staging writes there). Manifests and proxy/poster files go to filestore; web
+uploads stage under $storagedir. The plugin builds an FFmpeg proxy video for
+preview, supports picking a representative frame (EXIF into metadata), and
+auto-splits large still folders using capture-time cadence (Ingestr-style).
 
 What you get
 ------------
@@ -23,7 +25,8 @@ Requirements
 ------------
 
 - ResourceSpace with PHP ZipArchive
-- $syncdir set in include/config.php (absolute path, writable by the web/CLI user)
+- $syncdir set in include/config.php for folder sync (absolute path; may be read-only)
+- Writable filestore ($storagedir) for manifests, proxies, and web-upload staging
 - FFmpeg available (same as core video preview)
 - ExifTool available for representative-frame metadata
 - Browser access to jsDelivr CDN for Omakase Player (@byomakase/omakase-player)
@@ -87,8 +90,9 @@ Folder sync
 
 Web ingest
   Team → Ingest Image Sequences (or plugins/image_sequence/pages/ingest.php) —
-  upload a ZIP or stills. Files are extracted under $syncdir/image_sequences/
-  (configurable), then cadence-split into sequences and leftover photos.
+  upload a ZIP or stills. Files are extracted under $storagedir/image_sequences/
+  (configurable; not under the scan directory), then cadence-split into
+  sequences and leftover photos.
 
 Upload as Image Sequence type
   Uploading a ZIP to a new Image Sequence resource expands and re-ingests the
@@ -120,9 +124,9 @@ Offline jobs
 Notes
 -----
 
-- Frames are referenced by relative path under the sync root; deleting a
-  sequence removes the plugin DB row and .rs_imagesequence_*.json manifest,
-  not the still files on disk.
+- Frames are referenced by relative path under the sync/staging root; deleting
+  a sequence removes the plugin DB row and the filestore manifest JSON, not
+  the still files on disk. Scan roots are never written to or cleaned up.
 - Do not ship local include/config.php, filestore/, syncdir/, or vendor/ with
   this plugin.
 - Unit test: tests/test_list/001590_image_sequence_cadence.php

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Lightweight web page to stage a ZIP (or stills) under the sync root and
+ * Lightweight web page to stage a ZIP (or stills) under filestore staging and
  * run cadence auto-split ingest into Image Sequence + Photo resources.
  */
 
@@ -15,10 +15,10 @@ if (!image_sequence_can_access_tools()) {
 
 image_sequence_ensure_setup();
 
-global $syncdir;
-if (empty($syncdir)) {
+$staging = image_sequence_staging_root();
+if ($staging === '') {
     include "../../../include/header.php";
-    echo '<p class="FormHelp">' . escape($lang['image_sequence_syncdir_required']) . '</p>';
+    echo '<p class="FormHelp">' . escape($lang['image_sequence_staging_unavailable'] ?? 'Could not create a writable staging folder under filestore.') . '</p>';
     include "../../../include/footer.php";
     exit;
 }
