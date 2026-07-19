@@ -1665,8 +1665,9 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
 /**
  * Derive folder name, absolute path, and sequence code from a sequence folder.
  *
- * Sequence code = folder basename up to (but not including) the first underscore.
- * If there is no underscore, the whole folder name is used.
+ * Sequence code = leading characters of the folder basename up to (but not
+ * including) the first breaking character: space, dash, or underscore.
+ * If there is no breaker, the whole folder name is used.
  *
  * @return array{folder_name: string, folder_path: string, sequence_code: string}
  */
@@ -1674,10 +1675,11 @@ function image_sequence_folder_metadata(string $folder_absolute): array
 {
     $folder_path = rtrim(str_replace('\\', '/', $folder_absolute), '/');
     $folder_name = basename($folder_path);
-    $underscore = strpos($folder_name, '_');
-    $sequence_code = $underscore === false
-        ? $folder_name
-        : substr($folder_name, 0, $underscore);
+    if (preg_match('/^([^ \-_]+)/', $folder_name, $matches) === 1) {
+        $sequence_code = $matches[1];
+    } else {
+        $sequence_code = $folder_name;
+    }
     if ($sequence_code === '') {
         $sequence_code = $folder_name;
     }
