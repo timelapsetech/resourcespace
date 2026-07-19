@@ -83,7 +83,9 @@ function openai_gpt_update_field($resources,array $target_field,array $values, s
 
     $valid_response = false;
     if (trim($file) != "") {
-        $file_data = file_get_contents($file);
+        // Shrink large stills before base64 — local vision models choke on multi-MB originals.
+        $file_for_ai = openai_gpt_prepare_image_for_api($file);
+        $file_data = file_get_contents($file_for_ai !== '' ? $file_for_ai : $file);
         $file_data_base64 = base64_encode($file_data);
                                
         
@@ -209,28 +211,26 @@ function openai_gpt_update_field($resources,array $target_field,array $values, s
 
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($apivalues)) {
                 debug("openai_gpt error - invalid JSON text response received from API: " . json_last_error_msg() . " " . trim($response));
-                if (strpos($response, ",") !== false) {
-                    // Try and split on comma
-                    $apivalues = explode(",",$response);
-                } else {
-                    $apivalues = [$response];
-                }
+                $apivalues = openai_gpt_parse_keyword_list($response);
             }
             // The returned array elements may be associative or contain sub arrays - convert to list of strings
             $newstrings = [];
-            foreach ($apivalues as $attribute=>&$value) {
+            foreach ($apivalues as $attribute => &$value) {
                 if (is_array($value)) {
                     $value = json_encode($value);
-                }                
+                }
                 $newstrings[] = is_int_loose($attribute) ? $value : $attribute . " : " . $value;
-            }            
+            }
+            $newstrings = array_values(array_filter(array_map('trim', $newstrings), function ($s) {
+                return $s !== '' && strcasecmp($s, 'none') !== 0;
+            }));
             // update_field() will separate on NODE_NAME_STRING_SEPARATOR
             $newvalue = implode(NODE_NAME_STRING_SEPARATOR, $newstrings);
+            $valid_response = ($newvalue !== '');
         } else {
             $newvalue = trim($response, " \"");
+            $valid_response = true;
         }
-
-        $valid_response = true;
 
     } else {
         debug("openai_gpt error - empty response received from API: '" . trim($response) . "'");
@@ -298,25 +298,41 @@ function openai_gpt_generate_completions($endpoint, $api_key, $model, $messages,
         $temperature = 0;
     }
 
-    if ($api_key !== "") {
-        // Set the headers for the request
-        debug("openai_gpt API key provided, setting headers");
-        $headers = [
-            "Content-Type: application/json",
-            "Authorization: Bearer $api_key",
+    if ($provider === "ollama") {
+        // Native Ollama /api/chat — required for think:false on Qwen3.x.
+        // The OpenAI-compatible /v1/chat/completions path often burns max_tokens on
+        // reasoning and returns empty content.
+        $endpoint = openai_gpt_ollama_native_endpoint($endpoint);
+        $data = [
+            "model" => $model,
+            "messages" => openai_gpt_messages_to_ollama($messages),
+            "stream" => false,
+            "think" => false,
+            "options" => [
+                "temperature" => $temperature,
+                "num_predict" => (int) $max_tokens,
+            ],
         ];
+        $headers = ["Content-Type: application/json"];
     } else {
-        debug("openai_gpt no API key provided");
-        $headers = [];
-    }
+        if ($api_key !== "") {
+            debug("openai_gpt API key provided, setting headers");
+            $headers = [
+                "Content-Type: application/json",
+                "Authorization: Bearer $api_key",
+            ];
+        } else {
+            debug("openai_gpt no API key provided");
+            $headers = [];
+        }
 
-    // Set the data to send with the request
-    $data = [
-        "model"       => $model,
-        "messages"    => $messages,
-        "temperature" => $temperature,
-        "max_tokens"  => (int) $max_tokens,
-    ];
+        $data = [
+            "model"       => $model,
+            "messages"    => $messages,
+            "temperature" => $temperature,
+            "max_tokens"  => (int) $max_tokens,
+        ];
+    }
 
     // Initialize cURL
     $ch = curl_init($endpoint);
@@ -349,7 +365,9 @@ function openai_gpt_generate_completions($endpoint, $api_key, $model, $messages,
     $error = $response_data["error"] ?? ($response_data["error"][0] ?? []);
 
     if (!empty($error)) {
-        debug("openai_gpt_generate_completions API error - type:" . $error["type"] . ", message: " . $error["message"]);
+        $error_type = is_array($error) ? ($error["type"] ?? "") : "";
+        $error_message = is_array($error) ? ($error["message"] ?? json_encode($error)) : (string) $error;
+        debug("openai_gpt_generate_completions API error - type:" . $error_type . ", message: " . $error_message);
         $openai_response_cache[md5($endpoint . $model . $messagestring)] = false;
         return false;
     }
@@ -361,16 +379,104 @@ function openai_gpt_generate_completions($endpoint, $api_key, $model, $messages,
         } else {
             daily_stat("Ollama Usage", $userref, 1);
         }   
+    } elseif ($provider === "ollama") {
+        daily_stat("Ollama Usage", $userref, 1);
     }
 
-    // Return the text from the completions
-    if (isset($response_data["choices"][0]["message"]["content"])) {
-        $return = $response_data["choices"][0]["message"]["content"];
+    // OpenAI-compatible content path
+    $return = $response_data["choices"][0]["message"]["content"] ?? null;
+    // Native Ollama /api/chat content path
+    if (($return === null || $return === "") && isset($response_data["message"]["content"])) {
+        $return = $response_data["message"]["content"];
+    }
+
+    if ($return !== null && $return !== false) {
+        // Strip accidental chain-of-thought wrappers some local models still emit.
+        $return = preg_replace('/<think\b[^>]*>.*?<\/think>/is', '', (string) $return) ?? (string) $return;
+        $return = trim($return);
+        if ($return === '') {
+            $openai_response_cache[md5($endpoint . $model . $messagestring)] = false;
+            return false;
+        }
         $openai_response_cache[md5($endpoint . $model . $messagestring)] = $return;
         return $return;
     }
 
     return false;
+}
+
+/**
+ * Map a configured Ollama endpoint to the native /api/chat URL.
+ */
+function openai_gpt_ollama_native_endpoint(string $endpoint): string
+{
+    $endpoint = trim($endpoint);
+    if ($endpoint === '') {
+        return 'http://127.0.0.1:11434/api/chat';
+    }
+    if (preg_match('#/api/chat/?$#', $endpoint)) {
+        return $endpoint;
+    }
+    if (preg_match('#/v1/chat/completions/?$#', $endpoint)) {
+        return preg_replace('#/v1/chat/completions/?$#', '/api/chat', $endpoint);
+    }
+    if (preg_match('#/v1/?$#', $endpoint)) {
+        return preg_replace('#/v1/?$#', '/api/chat', $endpoint);
+    }
+
+    return rtrim($endpoint, '/') . '/api/chat';
+}
+
+/**
+ * Convert OpenAI-style chat messages (including image_url parts) to Ollama /api/chat messages.
+ *
+ * @param list<array<string,mixed>> $messages
+ * @return list<array<string,mixed>>
+ */
+function openai_gpt_messages_to_ollama(array $messages): array
+{
+    $converted = [];
+    foreach ($messages as $message) {
+        $role = (string) ($message['role'] ?? 'user');
+        $content = $message['content'] ?? '';
+        $images = [];
+        $text_parts = [];
+
+        if (is_array($content)) {
+            foreach ($content as $part) {
+                if (!is_array($part)) {
+                    continue;
+                }
+                $type = $part['type'] ?? '';
+                if ($type === 'text') {
+                    $text_parts[] = (string) ($part['text'] ?? '');
+                } elseif ($type === 'image_url') {
+                    $image = $part['image_url'] ?? '';
+                    if (is_array($image)) {
+                        $image = (string) ($image['url'] ?? '');
+                    }
+                    $image = (string) $image;
+                    if (preg_match('#^data:image/[^;]+;base64,(.+)$#s', $image, $match)) {
+                        $images[] = $match[1];
+                    }
+                }
+            }
+            $text = trim(implode("\n", array_filter($text_parts, 'strlen')));
+        } else {
+            $text = (string) $content;
+        }
+
+        $entry = [
+            'role' => $role,
+            'content' => $text,
+        ];
+        if (count($images) > 0) {
+            $entry['images'] = $images;
+        }
+        $converted[] = $entry;
+    }
+
+    return $converted;
 }
 
 /**
@@ -442,4 +548,170 @@ function openai_gpt_get_provider(): string
 
     return (isset($openai_gpt_provider_override) && $openai_gpt_provider_override) ? $openai_gpt_provider_override : $openai_gpt_provider;
 
+}
+
+/**
+ * Resolve the image file path to send to the AI provider for a resource.
+ *
+ * Plugins (e.g. image_sequence) may override via hook openai_gpt_image_path
+ * to supply a better source than the standard preview, such as a representative still.
+ *
+ * @return string Absolute path, or empty string if no usable image exists
+ */
+function openai_gpt_resolve_image_path(int $ref): string
+{
+    $hooked = hook('openai_gpt_image_path', '', [$ref]);
+    if (is_string($hooked) && $hooked !== '' && file_exists($hooked)) {
+        return $hooked;
+    }
+
+    $file = get_resource_path($ref, true, 'pre');
+    if (is_string($file) && $file !== '' && file_exists($file)) {
+        return $file;
+    }
+
+    return '';
+}
+
+/**
+ * Turn a free-text model response into a list of short keyword strings.
+ * Handles JSON failures, comma lists, and verbose Moondream-style prose.
+ *
+ * @return list<string>
+ */
+function openai_gpt_parse_keyword_list(string $response): array
+{
+    $response = trim($response);
+    if ($response === '' || strcasecmp($response, 'none') === 0) {
+        return [];
+    }
+
+    // Prefer comma / semicolon / newline separated tokens.
+    $parts = preg_split('/[,;\n]+/', $response) ?: [];
+    $keywords = [];
+    foreach ($parts as $part) {
+        $part = trim($part, " \t\n\r\0\x0B\"'`.");
+        $part = preg_replace('/^\d+[\.\)]\s*/', '', $part) ?? $part;
+        if ($part === '' || strcasecmp($part, 'none') === 0) {
+            continue;
+        }
+        // Drop sentence-like chunks from verbose models.
+        if (str_word_count($part) > 6 || preg_match('/\b(the|this|image|shows|features|appears)\b/i', $part)) {
+            continue;
+        }
+        if (mb_strlen($part) > 60) {
+            continue;
+        }
+        $keywords[] = $part;
+    }
+
+    if (count($keywords) > 0) {
+        return array_values(array_unique($keywords));
+    }
+
+    // Last resort: keep a single short phrase if the whole reply is short.
+    if (str_word_count($response) <= 6 && mb_strlen($response) <= 60) {
+        return [$response];
+    }
+
+    return [];
+}
+
+/**
+ * Create a JPEG suitable for vision APIs (max edge length), or return the original path.
+ */
+function openai_gpt_prepare_image_for_api(string $file, int $max_edge = 1024): string
+{
+    if ($file === '' || !file_exists($file)) {
+        return '';
+    }
+
+    $info = @getimagesize($file);
+    if (!is_array($info) || ($info[0] ?? 0) < 1 || ($info[1] ?? 0) < 1) {
+        return $file;
+    }
+
+    $width = (int) $info[0];
+    $height = (int) $info[1];
+    if ($width <= $max_edge && $height <= $max_edge && filesize($file) < 1_500_000) {
+        return $file;
+    }
+
+    $mime = $info['mime'] ?? '';
+    $src = null;
+    if ($mime === 'image/jpeg' || preg_match('/\.jpe?g$/i', $file)) {
+        $src = @imagecreatefromjpeg($file);
+    } elseif ($mime === 'image/png' || preg_match('/\.png$/i', $file)) {
+        $src = @imagecreatefrompng($file);
+    } elseif ($mime === 'image/webp' && function_exists('imagecreatefromwebp')) {
+        $src = @imagecreatefromwebp($file);
+    } elseif ($mime === 'image/gif') {
+        $src = @imagecreatefromgif($file);
+    }
+
+    if ($src === false || $src === null) {
+        return $file;
+    }
+
+    $scale = min($max_edge / $width, $max_edge / $height, 1.0);
+    $nw = max(1, (int) round($width * $scale));
+    $nh = max(1, (int) round($height * $scale));
+    $dst = imagecreatetruecolor($nw, $nh);
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $width, $height);
+
+    $tmp = get_temp_dir(false) . '/openai_gpt_' . md5($file . $max_edge . filesize($file)) . '.jpg';
+    $ok = imagejpeg($dst, $tmp, 85);
+    imagedestroy($src);
+    imagedestroy($dst);
+
+    return ($ok && file_exists($tmp)) ? $tmp : $file;
+}
+
+/**
+ * Run all image-input AI fields for a resource (fills empty fields unless overwrite is enabled).
+ *
+ * @param bool $force_overwrite When true, temporarily overwrite existing AI field values
+ *
+ * @return array<int, bool|array> Per-field update results keyed by field ref
+ */
+function openai_gpt_process_image_fields(int $ref, bool $force_overwrite = false): array
+{
+    global $valid_ai_field_types, $openai_gpt_overwrite_data, $openai_gpt_processed;
+
+    $file = openai_gpt_resolve_image_path($ref);
+    if ($file === '') {
+        debug("openai_gpt_process_image_fields - no image for resource {$ref}");
+        return [];
+    }
+
+    $restore_overwrite = null;
+    if ($force_overwrite) {
+        $restore_overwrite = $openai_gpt_overwrite_data;
+        $openai_gpt_overwrite_data = true;
+        // Allow re-processing even if this request already touched the field.
+        if (isset($openai_gpt_processed) && is_array($openai_gpt_processed)) {
+            foreach (array_keys($openai_gpt_processed) as $key) {
+                if (strpos((string) $key, $ref . '_') === 0) {
+                    unset($openai_gpt_processed[$key]);
+                }
+            }
+        }
+    }
+
+    $results = [];
+    $ai_gpt_image_fields = openai_gpt_get_dependent_fields(-1);
+    foreach ($ai_gpt_image_fields as $ai_gpt_image_field) {
+        $field = get_resource_type_field($ai_gpt_image_field);
+        if (!is_array($field) || !in_array($field['type'], $valid_ai_field_types)) {
+            continue;
+        }
+        $updated = openai_gpt_update_field($ref, $field, [], $file);
+        $results[(int) $field['ref']] = $updated[$ref] ?? $updated;
+    }
+
+    if ($restore_overwrite !== null) {
+        $openai_gpt_overwrite_data = $restore_overwrite;
+    }
+
+    return $results;
 }

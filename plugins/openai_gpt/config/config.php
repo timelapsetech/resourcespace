@@ -70,7 +70,7 @@ $valid_ai_field_types = [
 $openai_gpt_overwrite_data = false;
 
 // Endpoint connect timeout in seconds, used for OpenAI AND Ollama requests
-$ai_endpoint_connect_timeout = $ai_endpoint_connect_timeout ?? 3;
+$ai_endpoint_connect_timeout = $ai_endpoint_connect_timeout ?? 10;
 
-// Endpoint timeout in seconds, used for OpenAI AND Ollama requests
-$ai_endpoint_timeout = $ai_endpoint_timeout ?? 30;
+// Endpoint timeout in seconds, used for OpenAI AND Ollama requests (local models can be slow)
+$ai_endpoint_timeout = $ai_endpoint_timeout ?? 180;

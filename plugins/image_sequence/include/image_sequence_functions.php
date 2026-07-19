@@ -1772,6 +1772,9 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
         );
     }
 
+    // Re-run image AI fields against the chosen representative frame (offline — Moondream is slow).
+    image_sequence_queue_ai_metadata($ref, true);
+
     return [
         'ok' => true,
         'message' => $lang['image_sequence_rep_frame_set'] ?? 'Representative frame updated.',
@@ -1795,6 +1798,91 @@ function image_sequence_clamp_frame_index(int $frame_index, int $path_count): in
     }
 
     return $frame_index;
+}
+
+/**
+ * Absolute path to the representative still for AI / metadata use.
+ * Prefers a JPEG/PNG still; otherwise falls back to the generated poster preview.
+ */
+function image_sequence_get_representative_still_path(int $ref): string
+{
+    $data = image_sequence_get_data($ref);
+    if ($data === null) {
+        return '';
+    }
+
+    $paths = image_sequence_member_absolute_paths($data);
+    if (count($paths) === 0) {
+        return '';
+    }
+
+    $rep_index = image_sequence_clamp_frame_index((int) ($data['representative_frame'] ?? 0), count($paths));
+    $frame_path = $paths[$rep_index];
+    $ext = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
+
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true) && file_exists($frame_path)) {
+        return $frame_path;
+    }
+
+    // Non-browser/AI-friendly originals: use the poster derived from this frame.
+    $poster = get_resource_path($ref, true, 'pre', false, 'jpg');
+    if (is_string($poster) && $poster !== '' && file_exists($poster)) {
+        return $poster;
+    }
+
+    return file_exists($frame_path) ? $frame_path : '';
+}
+
+/**
+ * Run openai_gpt image fields for an image-sequence resource using the representative frame.
+ *
+ * @param bool $force_overwrite Re-generate even when target fields already have values
+ */
+function image_sequence_process_ai_metadata(int $ref, bool $force_overwrite = false): void
+{
+    if (!function_exists('openai_gpt_process_image_fields')) {
+        $openai_functions = dirname(__DIR__, 2) . '/openai_gpt/include/openai_gpt_functions.php';
+        if (!file_exists($openai_functions)) {
+            return;
+        }
+        include_once $openai_functions;
+    }
+
+    if (!function_exists('openai_gpt_process_image_fields')) {
+        return;
+    }
+
+    try {
+        openai_gpt_process_image_fields($ref, $force_overwrite);
+    } catch (Throwable $e) {
+        debug('image_sequence_process_ai_metadata: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Queue offline AI metadata generation for an image-sequence resource.
+ */
+function image_sequence_queue_ai_metadata(int $ref, bool $force_overwrite = false): void
+{
+    global $lang;
+
+    if (!function_exists('job_queue_add')) {
+        image_sequence_process_ai_metadata($ref, $force_overwrite);
+        return;
+    }
+
+    $success = $lang['image_sequence_ai_done'] ?? 'AI metadata generated from representative frame';
+    $failure = $lang['image_sequence_ai_failed'] ?? 'AI metadata generation failed';
+    // job_code dedupes pending jobs for the same resource.
+    job_queue_add(
+        'image_sequence_ai_metadata',
+        ['ref' => $ref, 'force_overwrite' => $force_overwrite],
+        '',
+        '',
+        $success,
+        $failure,
+        'imgseq_ai_' . $ref
+    );
 }
 
 /**

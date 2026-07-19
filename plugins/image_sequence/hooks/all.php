@@ -69,6 +69,25 @@ function HookImage_sequenceAllStaticsync_skip_file(string $shortpath = '', strin
 }
 
 /**
+ * Prefer the representative still when openai_gpt needs an image for this resource.
+ *
+ * @param int $ref Resource ID
+ *
+ * @return string|false Absolute path, or false to fall back to standard preview
+ */
+function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
+{
+    $ref = (int) $ref;
+    if ($ref <= 0 || image_sequence_get_data($ref) === null) {
+        return false;
+    }
+
+    $path = image_sequence_get_representative_still_path($ref);
+
+    return $path !== '' ? $path : false;
+}
+
+/**
  * After a file upload succeeds: if the resource is Image Sequence type and the
  * file is a ZIP, expand under the sync root and re-ingest with cadence split.
  *

@@ -120,9 +120,9 @@ if (count($arr_toprocess) > 0) {
         foreach ($arr_toprocess as $resource) {
             
             logScript("[process_gpt_existing] Processing resource #" . $resource . "...", $log_file);
-            $path_to_file = get_resource_path($resource, true, "pre");
+            $path_to_file = openai_gpt_resolve_image_path((int) $resource);
 
-            if (!file_exists($path_to_file)) {
+            if ($path_to_file === '') {
                 $arr_failure[] = $resource;
                 logScript("[process_gpt_existing] [ERROR] Pre size file was not found for resource", $log_file);
                 

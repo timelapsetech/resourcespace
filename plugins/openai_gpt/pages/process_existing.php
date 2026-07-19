@@ -189,8 +189,8 @@ if ($input_is_file)
         echo "Processing resource: $resource\n";
         flush(); ob_flush();
 
-        $path_to_file=get_resource_path($resource, true, "pre");
-        if (!file_exists($path_to_file))
+        $path_to_file = openai_gpt_resolve_image_path((int) $resource);
+        if ($path_to_file === '')
             {
             $arr_failure[] = $resource;
             echo " - ERROR. Pre size file was not found for resource\n";

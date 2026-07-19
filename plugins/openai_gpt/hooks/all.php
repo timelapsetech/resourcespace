@@ -223,8 +223,14 @@ function HookOpenai_gptAllAfterpreviewcreation(int $ref, int $alternative, bool 
     $fields_with_values = array_filter($fields, function ($f) { return isset($f['value']) && $f['value'] != '';});
     $fields_with_values = array_column($fields_with_values, 'ref');
 
+    $file = openai_gpt_resolve_image_path($ref);
+    if ($file === '') {
+        return false;
+    }
+
     // Do any fields use image as input?
     $ai_gpt_image_fields = openai_gpt_get_dependent_fields(-1);
+    $success = false;
                                     
     foreach($ai_gpt_image_fields as $ai_gpt_image_field)
         {
@@ -235,22 +241,18 @@ function HookOpenai_gptAllAfterpreviewcreation(int $ref, int $alternative, bool 
             continue;
             }
 
-        // Get the preview file
-        $file=get_resource_path($ref,true,"pre");
-        if (!file_exists($file))
-            {
-            return false;
-            }
-
         // Only update this field if it is empty.
         if (in_array($ai_gpt_image_field['ref'], $fields_with_values))
             {
             continue;
             }
 
-        $success = openai_gpt_update_field($ref,$ai_gpt_image_field, [],$file);
+        $updated = openai_gpt_update_field($ref,$ai_gpt_image_field, [],$file);
+        if (($updated[$ref] ?? $updated) === true) {
+            $success = true;
+            }
         }
-    return $success[$ref] ?? false;
+    return $success;
     }
 
 
