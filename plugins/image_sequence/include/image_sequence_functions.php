@@ -2234,6 +2234,11 @@ function image_sequence_generate_proxy(int $ref): bool
             create_previews($ref, false, 'jpg', false, true);
             $has_poster = true;
         }
+
+        // Hover-scrub strip for search cards (same snapshot_N.jpg naming as core videos).
+        if ($ok) {
+            image_sequence_generate_snapshots($ref, $paths, $target);
+        }
     } catch (Throwable $e) {
         debug('image_sequence_generate_proxy error: ' . $e->getMessage());
         $ok = false;
@@ -2255,6 +2260,244 @@ function image_sequence_generate_proxy(int $ref): bool
     }
 
     return $ok;
+}
+
+/**
+ * Build search-card hover scrub snapshots (snapshot_1.jpg …) for an image sequence.
+ * Prefers evenly spaced member stills; falls back to sampling the proxy video.
+ *
+ * @param list<string> $paths Absolute member still paths (optional)
+ * @param string       $proxy_path Absolute proxy video path (optional fallback)
+ */
+function image_sequence_generate_snapshots(int $ref, array $paths = [], string $proxy_path = ''): int
+{
+    global $ffmpeg_snapshot_frames;
+
+    $snap_count = (int) $ffmpeg_snapshot_frames;
+    if ($ref <= 0 || $snap_count < 2) {
+        return 0;
+    }
+
+    $template = get_resource_path($ref, true, 'snapshot', false, 'jpg', -1, 1, false, '');
+    if (!is_string($template) || $template === '') {
+        return 0;
+    }
+
+    // Clear previous strip so get_video_snapshots() does not keep stale extras.
+    for ($i = 1; $i <= $snap_count + 5; $i++) {
+        $old = str_replace('snapshot', 'snapshot_' . $i, $template);
+        if (is_file($old)) {
+            @unlink($old);
+        }
+    }
+
+    $written = 0;
+    if ($paths !== []) {
+        $written = image_sequence_write_snapshots_from_stills($ref, $paths, $snap_count, $template);
+    }
+    if ($written < 2 && $proxy_path !== '' && is_file($proxy_path)) {
+        $written = image_sequence_write_snapshots_from_video($ref, $proxy_path, $snap_count, $template);
+    }
+
+    return $written;
+}
+
+/**
+ * @param list<string> $paths
+ */
+function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int $snap_count, string $template): int
+{
+    $frame_count = count($paths);
+    if ($frame_count === 0) {
+        return 0;
+    }
+
+    $indices = image_sequence_snapshot_sample_indices($frame_count, $snap_count);
+    $written = 0;
+    $ffmpeg = get_utility_path('ffmpeg');
+    $convert = get_utility_path('im-convert');
+
+    foreach ($indices as $i => $frame_index) {
+        $src = $paths[$frame_index] ?? '';
+        if ($src === '' || !is_file($src)) {
+            continue;
+        }
+        $dest = str_replace('snapshot', 'snapshot_' . ($i + 1), $template);
+        $ok = false;
+
+        if ($convert !== false) {
+            try {
+                run_command(
+                    $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% -quality 80 %%DST%%',
+                    false,
+                    [
+                        '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
+                        '%%GEOM%%' => new CommandPlaceholderArg('640x640', [CommandPlaceholderArg::class, 'alwaysValid']),
+                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                    ]
+                );
+                $ok = is_file($dest) && filesize($dest) > 0;
+            } catch (Throwable $e) {
+                debug('image_sequence_write_snapshots_from_stills convert: ' . $e->getMessage());
+            }
+        }
+
+        if (!$ok && $ffmpeg !== false) {
+            try {
+                run_command(
+                    $ffmpeg . ' -y -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
+                    false,
+                    [
+                        '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
+                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                    ]
+                );
+                $ok = is_file($dest) && filesize($dest) > 0;
+            } catch (Throwable $e) {
+                debug('image_sequence_write_snapshots_from_stills ffmpeg: ' . $e->getMessage());
+            }
+        }
+
+        if (!$ok) {
+            $ext = strtolower(pathinfo($src, PATHINFO_EXTENSION));
+            if (in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+                $ok = @copy($src, $dest) && is_file($dest);
+            }
+        }
+
+        if ($ok) {
+            $written++;
+        }
+    }
+
+    return $written;
+}
+
+function image_sequence_write_snapshots_from_video(int $ref, string $video_path, int $snap_count, string $template): int
+{
+    $ffmpeg = get_utility_path('ffmpeg');
+    if ($ffmpeg === false || !is_file($video_path)) {
+        return 0;
+    }
+
+    $duration = 0.0;
+    try {
+        $duration = (float) get_video_duration($video_path);
+    } catch (Throwable $e) {
+        $duration = 0.0;
+    }
+    if ($duration <= 0) {
+        try {
+            $info = get_video_info($video_path);
+            if (is_array($info)) {
+                foreach (($info['streams'] ?? [$info]) as $stream) {
+                    if (!empty($stream['duration'])) {
+                        $duration = (float) $stream['duration'];
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $duration = 0.0;
+        }
+    }
+    if ($duration <= 0) {
+        return 0;
+    }
+
+    $step = max($duration / $snap_count, 0.01);
+    $written = 0;
+    for ($i = 1, $t = 0.0; $i <= $snap_count && $t <= $duration + 0.001; $i++, $t += $step) {
+        $dest = str_replace('snapshot', 'snapshot_' . $i, $template);
+        try {
+            run_command(
+                $ffmpeg . ' -y -ss %%TIME%% -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
+                false,
+                [
+                    '%%TIME%%' => new CommandPlaceholderArg(sprintf('%.3F', $t), [CommandPlaceholderArg::class, 'alwaysValid']),
+                    '%%SRC%%' => new CommandPlaceholderArg($video_path, 'is_valid_rs_path'),
+                    '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                ]
+            );
+            if (is_file($dest) && filesize($dest) > 0) {
+                $written++;
+            }
+        } catch (Throwable $e) {
+            debug('image_sequence_write_snapshots_from_video: ' . $e->getMessage());
+        }
+    }
+
+    return $written;
+}
+
+/**
+ * Evenly spaced zero-based frame indices for hover scrub snapshots.
+ *
+ * @return list<int>
+ */
+function image_sequence_snapshot_sample_indices(int $frame_count, int $snap_count): array
+{
+    if ($frame_count <= 0) {
+        return [];
+    }
+    if ($frame_count <= $snap_count) {
+        return range(0, $frame_count - 1);
+    }
+    $indices = [];
+    for ($i = 0; $i < $snap_count; $i++) {
+        $indices[] = (int) round($i * ($frame_count - 1) / ($snap_count - 1));
+    }
+
+    return array_values(array_unique($indices));
+}
+
+/**
+ * Emit search-card hover-scrub JS (same UX as core video snapshots).
+ */
+function image_sequence_render_search_scrub_script(int $ref, string $thumbnail_url): void
+{
+    global $ffmpeg_snapshot_frames;
+
+    if ($ref <= 0 || (int) $ffmpeg_snapshot_frames < 2) {
+        return;
+    }
+    if (get_video_snapshots($ref, false, true) < 2) {
+        return;
+    }
+
+    $snapshots = get_video_snapshots($ref, false, false, true);
+    if (!is_array($snapshots) || count($snapshots) < 2) {
+        return;
+    }
+    ?>
+    <script>
+    jQuery('#CentralSpace #ResourceShell<?php echo (int) $ref; ?> a img').off('mousemove.imgseqScrub mouseout.imgseqScrub')
+        .on('mousemove.imgseqScrub', function (event) {
+            var x_coord = event.pageX - jQuery(this).offset().left;
+            var video_snapshots = <?php echo json_encode($snapshots); ?>;
+            var keys = Object.keys(video_snapshots);
+            var snapshot_segment_px = Math.ceil(jQuery(this).width() / keys.length);
+            var snapshot_number = x_coord == 0 ? 1 : Math.ceil(x_coord / snapshot_segment_px);
+            if (snapshot_number < 1) {
+                snapshot_number = 1;
+            }
+            if (snapshot_number > keys.length) {
+                snapshot_number = keys.length;
+            }
+            if (typeof ss_img_<?php echo (int) $ref; ?> === 'undefined') {
+                ss_img_<?php echo (int) $ref; ?> = [];
+            }
+            if (!ss_img_<?php echo (int) $ref; ?>[snapshot_number]) {
+                ss_img_<?php echo (int) $ref; ?>[snapshot_number] = new Image();
+                ss_img_<?php echo (int) $ref; ?>[snapshot_number].src = video_snapshots[snapshot_number];
+            }
+            jQuery(this).attr('src', ss_img_<?php echo (int) $ref; ?>[snapshot_number].src);
+        })
+        .on('mouseout.imgseqScrub', function () {
+            jQuery(this).attr('src', <?php echo json_encode($thumbnail_url); ?>);
+        });
+    </script>
+    <?php
 }
 
 /**

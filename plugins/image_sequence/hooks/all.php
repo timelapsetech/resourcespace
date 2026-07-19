@@ -122,6 +122,30 @@ function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
 }
 
 /**
+ * Search cards: hover-scrub through image-sequence snapshot frames.
+ * (Core already does this for videos with snapshot_N.jpg files.)
+ *
+ * @param array  $resource
+ * @param string $thumbnail_url
+ * @param string $display
+ */
+function HookImage_sequenceAllAftersearchimg($resource = [], $thumbnail_url = '', $display = '')
+{
+    if (!is_array($resource) || !image_sequence_is_sequence_resource($resource)) {
+        return false;
+    }
+
+    $ref = (int) ($resource['ref'] ?? 0);
+    if ($ref <= 0 || $thumbnail_url === '') {
+        return false;
+    }
+
+    image_sequence_render_search_scrub_script($ref, (string) $thumbnail_url);
+
+    return false;
+}
+
+/**
  * Include sequence code in search result joins so cards can show it without extra queries.
  *
  * @return list<int>|false

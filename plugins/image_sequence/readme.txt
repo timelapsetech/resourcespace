@@ -24,6 +24,7 @@ What you get
 - Proxy video job + Omakase frame-accurate scrubber on the view page
   (in/out points + representative frame → asset metadata)
 - Omakase NLE on video resources (same controls; extracts still from original)
+- Search-card hover scrub for image sequences (and core video snapshots)
 - ZIP download of member frames (inline or offline job)
 
 

@@ -18,3 +18,4 @@
 1.13 Fast representative-frame save: resolve one frame only (no per-frame NAS realpath), skip timeline re-scan, local temp copy for EXIF/alt/poster
 1.14 Large NAS ingest: progress while dating stills; no realpath fallback; timeline from ingest dates (avoid second full ExifTool pass)
 1.15 Omakase NLE on video resources: in/out marks, rep frame → poster + alt file + related Photo
+1.16 Search-card hover scrub for image sequences (snapshot strip built with proxy)
