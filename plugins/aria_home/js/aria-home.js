@@ -80,9 +80,13 @@
         if (!grid) {
             return;
         }
+        // Large cards = Featured on home (set server-side via chroma-span-2 / data-featured)
         var cards = grid.querySelectorAll(":scope > .resource-card");
-        cards.forEach(function (card, index) {
-            card.classList.toggle("chroma-span-2", index === 0 && cards.length > 3);
+        cards.forEach(function (card) {
+            var featured = card.getAttribute("data-featured") === "1"
+                || card.classList.contains("is-featured");
+            card.classList.toggle("chroma-span-2", featured);
+            card.classList.toggle("is-featured", featured);
         });
     }
 

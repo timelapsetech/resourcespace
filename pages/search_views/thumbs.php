@@ -13,10 +13,20 @@ if ($use_selection_collection && in_array($ref, $selection_collection_resources)
     $class[] = "Selected";
 }
 
+// Featured-on-home assets use the large (2×2) card size
+if (
+    function_exists('aria_home_resource_is_featured')
+    && aria_home_resource_is_featured($result[$n])
+) {
+    $class[] = "chroma-span-2";
+    $class[] = "is-featured";
+}
+
 ?>
 
 <div class="resource-card <?php echo implode(" ", $class) . " "; echo $display == "xlthumbs" ? "xl" : "normal" ?>"
-     id="ResourceShell<?php echo escape($ref); ?>">
+     id="ResourceShell<?php echo escape($ref); ?>"
+     data-featured="<?php echo in_array('is-featured', $class, true) ? '1' : '0'; ?>">
     <div class="resource-card-action-bar">
         <?php 
             if ($use_selection_collection) {

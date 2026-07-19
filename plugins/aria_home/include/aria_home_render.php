@@ -8,7 +8,7 @@ include_once dirname(__DIR__) . '/include/aria_home_functions.php';
  * Render one asset card for the Aria home grid.
  * Uses the same .resource-card markup as search so chroma_theme styles apply.
  */
-function aria_home_render_card(array $resource, bool $span = false): void
+function aria_home_render_card(array $resource, ?bool $span = null): void
 {
     global $baseurl_short, $lang, $k, $internal_share_access, $collection_block_restypes,
         $usercollection_resources, $display_resource_id_in_thumbnail;
@@ -16,6 +16,10 @@ function aria_home_render_card(array $resource, bool $span = false): void
     $ref = (int) ($resource['ref'] ?? 0);
     if ($ref <= 0) {
         return;
+    }
+
+    if ($span === null) {
+        $span = aria_home_resource_is_featured($resource);
     }
 
     $title = aria_home_resource_title($resource);
@@ -45,6 +49,7 @@ function aria_home_render_card(array $resource, bool $span = false): void
     $classes = ['resource-card', 'xl'];
     if ($span) {
         $classes[] = 'chroma-span-2';
+        $classes[] = 'is-featured';
     }
 
     $block_types = is_array($collection_block_restypes ?? null) ? $collection_block_restypes : [];
@@ -61,7 +66,9 @@ function aria_home_render_card(array $resource, bool $span = false): void
         $filetype_label = $ext !== '' ? $ext : '';
     }
     ?>
-    <div class="<?php echo escape(implode(' ', $classes)); ?>" id="ResourceShell<?php echo $ref; ?>">
+    <div class="<?php echo escape(implode(' ', $classes)); ?>"
+         id="ResourceShell<?php echo $ref; ?>"
+         <?php echo $span ? 'data-featured="1"' : 'data-featured="0"'; ?>>
         <div class="resource-card-action-bar"></div>
 
         <a class="resource-card-image xl"
@@ -376,8 +383,9 @@ function aria_home_render_page(
                     if ($browse['data'] === []) {
                         echo '<p class="aria-empty">' . escape($lang['aria_home_no_results'] ?? 'No assets match these filters.') . '</p>';
                     } else {
-                        foreach ($browse['data'] as $i => $resource) {
-                            aria_home_render_card($resource, $i === 0 && count($browse['data']) > 3);
+                        aria_home_preload_featured_refs($browse['data']);
+                        foreach ($browse['data'] as $resource) {
+                            aria_home_render_card($resource);
                         }
                     }
                     ?>
@@ -415,8 +423,9 @@ function aria_home_render_grid_html(array $resources): string
         global $lang;
         echo '<p class="aria-empty">' . escape($lang['aria_home_no_results'] ?? 'No assets match these filters.') . '</p>';
     } else {
-        foreach ($resources as $i => $resource) {
-            aria_home_render_card($resource, $i === 0 && count($resources) > 3);
+        aria_home_preload_featured_refs($resources);
+        foreach ($resources as $resource) {
+            aria_home_render_card($resource);
         }
     }
     return (string) ob_get_clean();

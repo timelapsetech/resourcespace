@@ -268,6 +268,79 @@ function aria_home_featured_ids(): array
 }
 
 /**
+ * Batch-load which resource refs have the Featured-on-home node.
+ * Sets $GLOBALS['aria_home_featured_ref_set'] as ref => true.
+ *
+ * @param list<array|int> $resources Resource rows or refs
+ */
+function aria_home_preload_featured_refs(array $resources): void
+{
+    $ids = aria_home_featured_ids();
+    $node = (int) ($ids['node'] ?? 0);
+    $refs = [];
+    foreach ($resources as $row) {
+        if (is_array($row)) {
+            $ref = (int) ($row['ref'] ?? 0);
+        } else {
+            $ref = (int) $row;
+        }
+        if ($ref > 0) {
+            $refs[] = $ref;
+        }
+    }
+    $refs = array_values(array_unique($refs));
+    if ($node <= 0 || $refs === []) {
+        $GLOBALS['aria_home_featured_ref_set'] = [];
+        return;
+    }
+
+    $params = array_merge(['i', $node], ps_param_fill($refs, 'i'));
+    $found = ps_array(
+        'SELECT resource value FROM resource_node WHERE node = ? AND resource IN ('
+        . ps_param_insert(count($refs)) . ')',
+        $params
+    );
+    $set = [];
+    foreach ($found as $ref) {
+        $set[(int) $ref] = true;
+    }
+    $GLOBALS['aria_home_featured_ref_set'] = $set;
+}
+
+/**
+ * Whether a resource is marked Featured on home.
+ */
+function aria_home_resource_is_featured(array $resource): bool
+{
+    $ref = (int) ($resource['ref'] ?? 0);
+    if ($ref <= 0) {
+        return false;
+    }
+
+    if (isset($GLOBALS['aria_home_featured_ref_set']) && is_array($GLOBALS['aria_home_featured_ref_set'])) {
+        return isset($GLOBALS['aria_home_featured_ref_set'][$ref]);
+    }
+
+    $ids = aria_home_featured_ids();
+    $node = (int) ($ids['node'] ?? 0);
+    $field = (int) ($ids['field'] ?? 0);
+    if ($node <= 0) {
+        return false;
+    }
+
+    $nodes = get_resource_nodes($ref, $field > 0 ? $field : null);
+    if (!is_array($nodes)) {
+        return false;
+    }
+    foreach ($nodes as $n) {
+        if ((int) $n === $node) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Resolve restypes CSV for kind filter.
  */
 function aria_home_restypes_for_kind(string $kind): string

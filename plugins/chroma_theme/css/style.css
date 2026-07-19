@@ -353,7 +353,7 @@ a.Primary,
     color: var(--chroma-amber-fg) !important;
 }
 
-/* Featured / first card emphasis when JS marks it */
+/* Featured-on-home assets — large 2×2 card */
 .resource-card.chroma-span-2 {
     grid-column: span 2;
     grid-row: span 2;
