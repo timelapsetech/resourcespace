@@ -212,24 +212,20 @@ function openai_gpt_update_field($resources,array $target_field,array $values, s
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($apivalues)) {
                 debug("openai_gpt error - invalid JSON text response received from API: " . json_last_error_msg() . " " . trim($response));
                 $apivalues = openai_gpt_parse_keyword_list($response);
+            } else {
+                $apivalues = openai_gpt_normalize_keyword_values($apivalues);
             }
-            // The returned array elements may be associative or contain sub arrays - convert to list of strings
-            $newstrings = [];
-            foreach ($apivalues as $attribute => &$value) {
-                if (is_array($value)) {
-                    $value = json_encode($value);
-                }
-                $newstrings[] = is_int_loose($attribute) ? $value : $attribute . " : " . $value;
-            }
-            $newstrings = array_values(array_filter(array_map('trim', $newstrings), function ($s) {
-                return $s !== '' && strcasecmp($s, 'none') !== 0;
-            }));
             // update_field() will separate on NODE_NAME_STRING_SEPARATOR
-            $newvalue = implode(NODE_NAME_STRING_SEPARATOR, $newstrings);
+            $newvalue = implode(NODE_NAME_STRING_SEPARATOR, $apivalues);
             $valid_response = ($newvalue !== '');
         } else {
             $newvalue = trim($response, " \"");
-            $valid_response = true;
+            if (strcasecmp($newvalue, 'none') === 0 || strcasecmp($newvalue, 'unknown') === 0 || strcasecmp($newvalue, 'n/a') === 0) {
+                $newvalue = '';
+                $valid_response = false;
+            } else {
+                $valid_response = true;
+            }
         }
 
     } else {
@@ -575,7 +571,7 @@ function openai_gpt_resolve_image_path(int $ref): string
 
 /**
  * Turn a free-text model response into a list of short keyword strings.
- * Handles JSON failures, comma lists, and verbose Moondream-style prose.
+ * Handles JSON arrays, Python-style lists, comma lists, and bracket/quote wrappers.
  *
  * @return list<string>
  */
@@ -586,15 +582,76 @@ function openai_gpt_parse_keyword_list(string $response): array
         return [];
     }
 
-    // Prefer comma / semicolon / newline separated tokens.
+    // Strip markdown fences.
+    if (preg_match('/^```(?:json|text)?\s*(.*?)\s*```$/is', $response, $fence)) {
+        $response = trim($fence[1]);
+    }
+
+    // Prefer real JSON arrays when present.
+    $json = json_decode($response, true);
+    if (is_array($json)) {
+        return openai_gpt_normalize_keyword_values($json);
+    }
+
+    // Python/JS-ish list with single quotes: ['night', 'city', 'street']
+    if (preg_match('/^\s*\[(.*)\]\s*$/s', $response, $bracket)) {
+        $inner = trim($bracket[1]);
+        $as_json = json_decode('[' . preg_replace("/'/", '"', $inner) . ']', true);
+        if (is_array($as_json)) {
+            return openai_gpt_normalize_keyword_values($as_json);
+        }
+        $response = $inner;
+    }
+
+    // Bare quoted CSV: "night", "city" or 'night', 'city'
+    if (preg_match_all('/[\'"]([^\'"]+)[\'"]/', $response, $quoted) && count($quoted[1]) > 1) {
+        return openai_gpt_normalize_keyword_values($quoted[1]);
+    }
+
+    // Comma / semicolon / newline separated tokens.
     $parts = preg_split('/[,;\n]+/', $response) ?: [];
+    return openai_gpt_normalize_keyword_values($parts);
+}
+
+/**
+ * Normalize mixed keyword values into clean short strings for dynamic keyword nodes.
+ *
+ * @param array<int|string, mixed> $values
+ * @return list<string>
+ */
+function openai_gpt_normalize_keyword_values(array $values): array
+{
     $keywords = [];
-    foreach ($parts as $part) {
-        $part = trim($part, " \t\n\r\0\x0B\"'`.");
-        $part = preg_replace('/^\d+[\.\)]\s*/', '', $part) ?? $part;
-        if ($part === '' || strcasecmp($part, 'none') === 0) {
+    foreach ($values as $attribute => $value) {
+        if (is_array($value)) {
+            foreach (openai_gpt_normalize_keyword_values($value) as $nested) {
+                $keywords[] = $nested;
+            }
             continue;
         }
+
+        $part = openai_gpt_clean_keyword_token((string) $value);
+        if ($part === '') {
+            continue;
+        }
+
+        // Models sometimes return one quoted blob of space-separated tags.
+        $space_parts = preg_split('/\s+/u', $part) ?: [];
+        if (
+            count($space_parts) >= 3
+            && max(array_map('mb_strlen', $space_parts)) <= 24
+            && !preg_match('/\b(the|this|image|shows|features|appears|with|from|and)\b/i', $part)
+        ) {
+            foreach ($space_parts as $space_part) {
+                $space_part = openai_gpt_clean_keyword_token($space_part);
+                if ($space_part === '' || mb_strlen($space_part) > 40) {
+                    continue;
+                }
+                $keywords[] = $space_part;
+            }
+            continue;
+        }
+
         // Drop sentence-like chunks from verbose models.
         if (str_word_count($part) > 6 || preg_match('/\b(the|this|image|shows|features|appears)\b/i', $part)) {
             continue;
@@ -605,16 +662,37 @@ function openai_gpt_parse_keyword_list(string $response): array
         $keywords[] = $part;
     }
 
-    if (count($keywords) > 0) {
-        return array_values(array_unique($keywords));
+    return array_values(array_unique($keywords));
+}
+
+/**
+ * Strip list/JSON punctuation wrappers from a single keyword token.
+ */
+function openai_gpt_clean_keyword_token(string $token): string
+{
+    $token = trim($token);
+    // Remove zero-width / odd spaces the UI may show.
+    $token = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $token) ?? $token;
+    $token = trim($token);
+
+    // Peel wrapping brackets/braces repeatedly.
+    for ($i = 0; $i < 3; $i++) {
+        $next = preg_replace('/^[\s\[\(\{]+|[\s\]\)\}]+$/u', '', $token) ?? $token;
+        $next = trim($next, " \t\n\r\0\x0B\"'`");
+        if ($next === $token) {
+            break;
+        }
+        $token = $next;
     }
 
-    // Last resort: keep a single short phrase if the whole reply is short.
-    if (str_word_count($response) <= 6 && mb_strlen($response) <= 60) {
-        return [$response];
+    $token = preg_replace('/^\d+[\.\)]\s*/', '', $token) ?? $token;
+    $token = trim($token, " \t\n\r\0\x0B\"'`.,;:");
+
+    if ($token === '' || strcasecmp($token, 'none') === 0 || strcasecmp($token, 'unknown') === 0 || strcasecmp($token, 'n/a') === 0) {
+        return '';
     }
 
-    return [];
+    return $token;
 }
 
 /**
