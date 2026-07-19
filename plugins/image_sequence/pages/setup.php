@@ -35,7 +35,9 @@ $page_def[] = config_add_single_ftype_select('image_sequence_repframe_field', $l
 $page_def[] = config_add_single_ftype_select('image_sequence_inframe_field', $lang['image_sequence_inframe_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_outframe_field', $lang['image_sequence_outframe_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_cadence_field', $lang['image_sequence_cadence_field'], 420);
+$page_def[] = config_add_single_ftype_select('image_sequence_seqcode_field', $lang['image_sequence_seqcode_field'], 420);
 $page_def[] = config_add_single_ftype_select('image_sequence_folder_field', $lang['image_sequence_folder_field'], 420);
+$page_def[] = config_add_single_ftype_select('image_sequence_folderpath_field', $lang['image_sequence_folderpath_field'], 420);
 
 config_gen_setup_post($page_def, $plugin_name);
 

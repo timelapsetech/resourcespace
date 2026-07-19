@@ -42,6 +42,8 @@ $image_sequence_inframe_field = 0;
 $image_sequence_outframe_field = 0;
 $image_sequence_cadence_field = 0;
 $image_sequence_folder_field = 0;
+$image_sequence_folderpath_field = 0;
+$image_sequence_seqcode_field = 0;
 
 # Photo resource type used for extras (stock Photo = 1).
 $image_sequence_photo_restype = 1;
@@ -56,4 +58,6 @@ $image_sequence_fieldvars = [
     'image_sequence_outframe_field',
     'image_sequence_cadence_field',
     'image_sequence_folder_field',
+    'image_sequence_folderpath_field',
+    'image_sequence_seqcode_field',
 ];

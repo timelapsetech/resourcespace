@@ -19,7 +19,9 @@ $lang['image_sequence_repframe_field'] = 'Representative frame metadata field';
 $lang['image_sequence_inframe_field'] = 'In point (frame) metadata field';
 $lang['image_sequence_outframe_field'] = 'Out point (frame) metadata field';
 $lang['image_sequence_cadence_field'] = 'Capture cadence metadata field';
-$lang['image_sequence_folder_field'] = 'Sequence folder metadata field';
+$lang['image_sequence_folder_field'] = 'Folder name metadata field';
+$lang['image_sequence_folderpath_field'] = 'Folder path metadata field';
+$lang['image_sequence_seqcode_field'] = 'Sequence code metadata field (folder name before first underscore)';
 $lang['image_sequence_photo_restype'] = 'Resource type for extras (non-sequence stills)';
 
 $lang['image_sequence_generating_preview'] = 'Generating sequence preview…';

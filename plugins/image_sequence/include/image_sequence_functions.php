@@ -12,7 +12,8 @@ function image_sequence_ensure_setup(): void
 {
     global $image_sequence_restype, $image_sequence_framecount_field, $image_sequence_duration_field,
         $image_sequence_fps_field, $image_sequence_repframe_field, $image_sequence_inframe_field,
-        $image_sequence_outframe_field, $image_sequence_cadence_field, $image_sequence_folder_field;
+        $image_sequence_outframe_field, $image_sequence_cadence_field, $image_sequence_folder_field,
+        $image_sequence_folderpath_field, $image_sequence_seqcode_field;
 
     $config = get_plugin_config('image_sequence') ?: [];
     $changed = false;
@@ -49,7 +50,9 @@ function image_sequence_ensure_setup(): void
         'image_sequence_inframe_field' => ['In point (frame)', 'imgseq_inframe'],
         'image_sequence_outframe_field' => ['Out point (frame)', 'imgseq_outframe'],
         'image_sequence_cadence_field' => ['Capture cadence', 'imgseq_cadence'],
-        'image_sequence_folder_field' => ['Sequence folder', 'imgseq_folder'],
+        'image_sequence_folder_field' => ['Folder name', 'imgseq_folder'],
+        'image_sequence_folderpath_field' => ['Folder path', 'imgseq_folderpath'],
+        'image_sequence_seqcode_field' => ['Sequence code', 'imgseq_seqcode'],
     ];
 
     image_sequence_ensure_db_columns();
@@ -313,7 +316,9 @@ function image_sequence_metadata_tab_layout(int $sequence_tab, int $image_tab): 
         'imgseq_repframe' => ['order_by' => 2200, 'title' => 'Representative frame'],
         'imgseq_expmode' => ['order_by' => 2210, 'title' => 'Exposure program'],
         'imgseq_framesize' => ['order_by' => 2220, 'title' => 'Frame file size'],
-        'imgseq_folder' => ['order_by' => 2230, 'title' => 'Sequence folder'],
+        'imgseq_seqcode' => ['order_by' => 2230, 'title' => 'Sequence code'],
+        'imgseq_folder' => ['order_by' => 2240, 'title' => 'Folder name'],
+        'imgseq_folderpath' => ['order_by' => 2250, 'title' => 'Folder path'],
     ];
 
     // Image: representative-still camera / technical EXIF (order_by 2300–2490).
@@ -633,7 +638,7 @@ function image_sequence_batch_effective_dates(array $paths): array
         foreach ($chunk as $i => $path) {
             $token = '%%F' . $i . '%%';
             $placeholders[] = $token;
-            $args[$token] = new CommandPlaceholderArg($path, 'is_valid_rs_path');
+            $args[$token] = new CommandPlaceholderArg($path, 'image_sequence_is_valid_shell_path');
         }
         // -T: tab-separated FileName DateTimeOriginal; -n: numeric where possible.
         // Use FilePath so we can map back to absolute paths reliably.
@@ -833,7 +838,7 @@ function image_sequence_analyze_exposure_mode(array $member_paths): string
         $tagged = run_command(
             $exiftool . ' -s -s -ExposureProgram -ExposureMode -FNumber -ExposureTime -ISO %%FILE%%',
             false,
-            ['%%FILE%%' => new CommandPlaceholderArg($path, 'is_valid_rs_path')]
+            ['%%FILE%%' => new CommandPlaceholderArg($path, 'image_sequence_is_valid_shell_path')]
         );
         $map = [];
         foreach (preg_split('/\r\n|\r|\n/', trim((string) $tagged)) ?: [] as $line) {
@@ -1130,6 +1135,26 @@ function image_sequence_allowed_roots(): array
 }
 
 /**
+ * Shell-safe path check for ExifTool/FFmpeg args on sequence frames.
+ * Extends core is_valid_rs_path() so configured scan roots (e.g. external volumes) are allowed.
+ */
+function image_sequence_is_valid_shell_path(string $path): bool
+{
+    global $storagedir, $syncdir, $fstemplate_alt_storagedir, $tempdir;
+
+    $override = image_sequence_allowed_roots();
+    foreach ([$storagedir ?? '', $syncdir ?? '', $fstemplate_alt_storagedir ?? '', $tempdir ?? ''] as $extra) {
+        $extra = rtrim((string) $extra, '/');
+        if ($extra !== '') {
+            $override[] = $extra;
+        }
+    }
+    $override[] = dirname(__DIR__, 3) . '/gfx';
+
+    return is_valid_rs_path($path, array_values(array_unique(array_filter($override))));
+}
+
+/**
  * Whether an absolute path sits under a configured scan root (read-only stills tree).
  */
 function image_sequence_path_under_scan_root(string $absolute_path): bool
@@ -1197,7 +1222,7 @@ function image_sequence_get_effective_date(string $path): float
         $output = run_command(
             $exiftool . ' -s3 -DateTimeOriginal -DateTime -n %%FILE%%',
             false,
-            ['%%FILE%%' => new CommandPlaceholderArg($path, 'is_valid_rs_path')]
+            ['%%FILE%%' => new CommandPlaceholderArg($path, 'image_sequence_is_valid_shell_path')]
         );
         $lines = preg_split('/\r\n|\r|\n/', trim((string) $output)) ?: [];
         foreach ($lines as $line) {
@@ -1514,10 +1539,12 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
     }
 
     $folder = dirname($segment[0]['path']);
+    $folder = rtrim(str_replace('\\', '/', $folder), '/');
     $folder_rel = image_sequence_absolute_to_relative($folder);
     if ($folder_rel === null) {
         return 0;
     }
+    $folder_meta = image_sequence_folder_metadata($folder);
 
     $member_basenames = [];
     foreach ($segment as $file) {
@@ -1607,7 +1634,9 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         'duration' => $duration,
         'fps' => $fps,
         'cadence' => $cadence,
-        'folder' => $folder_rel,
+        'folder' => $folder_meta['folder_name'],
+        'folder_path' => $folder_meta['folder_path'],
+        'sequence_code' => $folder_meta['sequence_code'],
         'representative_frame' => 0,
         'in_frame' => 0,
         'out_frame' => max(0, $frame_count - 1),
@@ -1634,12 +1663,41 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
 }
 
 /**
+ * Derive folder name, absolute path, and sequence code from a sequence folder.
+ *
+ * Sequence code = folder basename up to (but not including) the first underscore.
+ * If there is no underscore, the whole folder name is used.
+ *
+ * @return array{folder_name: string, folder_path: string, sequence_code: string}
+ */
+function image_sequence_folder_metadata(string $folder_absolute): array
+{
+    $folder_path = rtrim(str_replace('\\', '/', $folder_absolute), '/');
+    $folder_name = basename($folder_path);
+    $underscore = strpos($folder_name, '_');
+    $sequence_code = $underscore === false
+        ? $folder_name
+        : substr($folder_name, 0, $underscore);
+    if ($sequence_code === '') {
+        $sequence_code = $folder_name;
+    }
+
+    return [
+        'folder_name' => $folder_name,
+        'folder_path' => $folder_path,
+        'sequence_code' => $sequence_code,
+    ];
+}
+
+/**
  * @param array{
  *   frame_count?: int|float,
  *   duration?: float,
  *   fps?: float,
  *   cadence?: float|null,
  *   folder?: string,
+ *   folder_path?: string,
+ *   sequence_code?: string,
  *   representative_frame?: int,
  *   in_frame?: int,
  *   out_frame?: int
@@ -1649,7 +1707,8 @@ function image_sequence_update_metadata_fields(int $ref, array $values): void
 {
     global $image_sequence_framecount_field, $image_sequence_duration_field, $image_sequence_fps_field,
         $image_sequence_repframe_field, $image_sequence_inframe_field, $image_sequence_outframe_field,
-        $image_sequence_cadence_field, $image_sequence_folder_field;
+        $image_sequence_cadence_field, $image_sequence_folder_field, $image_sequence_folderpath_field,
+        $image_sequence_seqcode_field;
 
     $map = [
         'frame_count' => $image_sequence_framecount_field,
@@ -1660,6 +1719,8 @@ function image_sequence_update_metadata_fields(int $ref, array $values): void
         'out_frame' => $image_sequence_outframe_field,
         'cadence' => $image_sequence_cadence_field,
         'folder' => $image_sequence_folder_field,
+        'folder_path' => $image_sequence_folderpath_field,
+        'sequence_code' => $image_sequence_seqcode_field,
     ];
 
     foreach ($map as $key => $field) {
@@ -2022,7 +2083,7 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
                     $ffmpeg . ' -y -i %%SRC%% -frames:v 1 -update 1 %%DST%%',
                     false,
                     [
-                        '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'is_valid_rs_path'),
+                        '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
                         '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
                     ]
                 );

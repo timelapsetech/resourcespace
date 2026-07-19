@@ -7,3 +7,4 @@
 1.5 AI metadata from representative frame via openai_gpt/Ollama (offline job when rep frame is set)
 1.6 Scan roots are read-only: manifests in filestore, web staging under $storagedir (never write/delete in $syncdir)
 1.7 View metadata tabs: Default (descriptive), Sequence (timing/edit points), Image (camera/EXIF)
+1.8 On ingest, write folder name, full folder path, and sequence code (name before first _) to metadata

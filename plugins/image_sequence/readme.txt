@@ -105,7 +105,7 @@ View page
   Metadata is grouped into ResourceSpace tabs:
   - Default — descriptive fields (title, caption, keywords, AI text, …)
   - Sequence — frame count, playback/real-time timing, cadence, in/out,
-    representative frame, exposure program, folder path
+    representative frame, exposure program, sequence code, folder name/path
   - Image — camera/EXIF from the representative still
 
   Scrub the Omakase proxy player frame-accurately: Mark In / Mark Out, save
