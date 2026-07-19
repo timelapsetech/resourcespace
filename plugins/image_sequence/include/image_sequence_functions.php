@@ -653,8 +653,15 @@ function image_sequence_batch_effective_dates(array $paths): array
     }
 
     $out = [];
+    $chunks = array_chunk(array_values($paths), 80);
+    $chunk_total = count($chunks);
+    $cli = (PHP_SAPI === 'cli');
     // Chunk to stay under ARG_MAX on large sequences.
-    foreach (array_chunk(array_values($paths), 80) as $chunk) {
+    foreach ($chunks as $chunk_i => $chunk) {
+        if ($cli && $chunk_total > 1) {
+            echo 'dating ' . ($chunk_i + 1) . '/' . $chunk_total . "…\n";
+            flush();
+        }
         $placeholders = [];
         $args = [];
         foreach ($chunk as $i => $path) {
@@ -662,8 +669,7 @@ function image_sequence_batch_effective_dates(array $paths): array
             $placeholders[] = $token;
             $args[$token] = new CommandPlaceholderArg($path, 'image_sequence_is_valid_shell_path');
         }
-        // -T: tab-separated FileName DateTimeOriginal; -n: numeric where possible.
-        // Use FilePath so we can map back to absolute paths reliably.
+        // -T: tab-separated FilePath DateTimeOriginal; -n: numeric where possible.
         $output = run_command(
             $exiftool . ' -T -filepath -DateTimeOriginal -n ' . implode(' ', $placeholders),
             false,
@@ -678,7 +684,7 @@ function image_sequence_batch_effective_dates(array $paths): array
             if (count($parts) < 2) {
                 continue;
             }
-            $file = $parts[0];
+            $file = str_replace('\\', '/', $parts[0]);
             $raw = trim($parts[1] ?? '');
             if ($raw === '' || $raw === '-') {
                 continue;
@@ -692,13 +698,12 @@ function image_sequence_batch_effective_dates(array $paths): array
                 }
                 $ts = (float) $parsed;
             }
-            // ExifTool may print paths with different separators; normalize for lookup.
-            $out[str_replace('\\', '/', $file)] = $ts;
             $out[$file] = $ts;
+            $out[basename($file)] = $ts;
         }
     }
 
-    // Map chunk results onto the exact input paths (realpath / basename fallback).
+    // Map onto the exact input paths — never realpath() each file (deadly on SMB).
     $mapped = [];
     foreach ($paths as $path) {
         $norm = str_replace('\\', '/', $path);
@@ -706,17 +711,97 @@ function image_sequence_batch_effective_dates(array $paths): array
             $mapped[$path] = $out[$path];
         } elseif (isset($out[$norm])) {
             $mapped[$path] = $out[$norm];
-        } else {
-            $real = realpath($path);
-            if ($real !== false && isset($out[$real])) {
-                $mapped[$path] = $out[$real];
-            } elseif ($real !== false && isset($out[str_replace('\\', '/', $real)])) {
-                $mapped[$path] = $out[str_replace('\\', '/', $real)];
-            }
+        } elseif (isset($out[basename($norm)])) {
+            $mapped[$path] = $out[basename($norm)];
         }
     }
 
     return $mapped;
+}
+
+/**
+ * Write timeline fields from already-dated ingest members (no second ExifTool pass).
+ *
+ * @param list<array{path: string, date: float}> $segment
+ */
+function image_sequence_apply_timeline_from_dated_segment(int $ref, array $segment, ?float $cadence = null): void
+{
+    if ($ref <= 0 || $segment === []) {
+        return;
+    }
+
+    image_sequence_ensure_setup();
+
+    $dates = [];
+    foreach ($segment as $row) {
+        $ts = (float) ($row['date'] ?? 0);
+        if ($ts > 0) {
+            $dates[] = $ts;
+        }
+    }
+    if ($dates === []) {
+        return;
+    }
+    sort($dates);
+    $first_ts = $dates[0];
+    $last_ts = $dates[count($dates) - 1];
+    $real_duration = max(0.0, $last_ts - $first_ts);
+    $interval = $cadence;
+    if ($interval === null && count($dates) >= 2) {
+        $interval = $real_duration / (count($dates) - 1);
+    }
+
+    // Exposure mode: sample a few frames only (full-sequence EXIF is too slow on NAS).
+    $paths = [];
+    foreach ($segment as $row) {
+        if (!empty($row['path'])) {
+            $paths[] = (string) $row['path'];
+        }
+    }
+    $exposure_summary = '';
+    if ($paths !== []) {
+        try {
+            $exposure_summary = image_sequence_analyze_exposure_mode(
+                image_sequence_sample_paths($paths, 5)
+            );
+        } catch (Throwable $e) {
+            debug('image_sequence_apply_timeline_from_dated_segment exposure: ' . $e->getMessage());
+        }
+    }
+
+    $map = [
+        'imgseq_firstcap' => image_sequence_format_capture_timestamp($first_ts),
+        'imgseq_lastcap' => image_sequence_format_capture_timestamp($last_ts),
+        'imgseq_realdur' => image_sequence_format_duration_label($real_duration),
+        'imgseq_interval' => $interval === null ? '' : image_sequence_format_interval_label($interval),
+        'imgseq_expmode' => $exposure_summary,
+    ];
+
+    foreach ($map as $shortname => $value) {
+        if ($value === '' || $value === null) {
+            continue;
+        }
+        $field_ref = (int) ps_value(
+            'SELECT ref value FROM resource_type_field WHERE name = ?',
+            ['s', $shortname],
+            0,
+            'schema'
+        );
+        if ($field_ref > 0) {
+            update_field($ref, $field_ref, (string) $value);
+        }
+    }
+
+    if ($interval !== null) {
+        ps_query(
+            'UPDATE resource_image_sequence SET detected_cadence_seconds = ? WHERE resource = ?',
+            ['d', (float) $interval, 'i', $ref]
+        );
+        global $image_sequence_cadence_field;
+        if ((int) $image_sequence_cadence_field > 0) {
+            update_field($ref, (int) $image_sequence_cadence_field, (string) round((float) $interval, 3));
+        }
+    }
 }
 
 /**
@@ -1310,6 +1395,7 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
     }
 
     $paths = [];
+    $mtimes = [];
     if ($recursive) {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($folder, FilesystemIterator::SKIP_DOTS)
@@ -1324,29 +1410,45 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
                 continue;
             }
             $paths[] = $path;
+            $mtimes[$path] = (float) $fileinfo->getMTime();
         }
     } else {
-        foreach (scandir($folder) ?: [] as $base) {
-            if ($base === '.' || $base === '..' || $base[0] === '.') {
+        $iterator = new DirectoryIterator($folder);
+        foreach ($iterator as $fileinfo) {
+            if ($fileinfo->isDot() || !$fileinfo->isFile()) {
                 continue;
             }
-            $path = $folder . '/' . $base;
-            if (!is_file($path) || !image_sequence_is_supported_file($path)) {
+            $base = $fileinfo->getFilename();
+            if ($base[0] === '.' || !image_sequence_is_supported_file($fileinfo->getPathname())) {
                 continue;
             }
+            $path = $fileinfo->getPathname();
             $paths[] = $path;
+            $mtimes[$path] = (float) $fileinfo->getMTime();
         }
     }
 
     // Batch ExifTool (one process per chunk) — per-file calls are far too slow on network volumes.
-    $dates = image_sequence_batch_effective_dates($paths);
+    // Fast ingest skips ExifTool and uses filesystem mtimes (see $image_sequence_fast_ingest).
+    global $image_sequence_fast_ingest;
+    $use_exif_dates = empty($image_sequence_fast_ingest);
+    if (PHP_SAPI === 'cli' && count($paths) > 0) {
+        if ($use_exif_dates) {
+            echo '  found ' . count($paths) . " stills, reading capture times…\n";
+        } else {
+            echo '  found ' . count($paths) . " stills (fast ingest — using file mtimes)\n";
+        }
+        flush();
+    }
+    $dates = $use_exif_dates ? image_sequence_batch_effective_dates($paths) : [];
     $files = [];
     foreach ($paths as $path) {
         if (isset($dates[$path])) {
             $date = $dates[$path];
+        } elseif (isset($mtimes[$path])) {
+            $date = $mtimes[$path];
         } else {
-            $mtime = @filemtime($path);
-            $date = $mtime !== false ? (float) $mtime : (float) time();
+            $date = 0.0;
         }
         $files[] = ['path' => $path, 'date' => $date];
     }
@@ -1708,12 +1810,13 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
 
     $member_paths = [];
     foreach ($segment as $file) {
-        if (is_file($file['path'] ?? '')) {
-            $member_paths[] = $file['path'];
+        if (!empty($file['path'])) {
+            $member_paths[] = (string) $file['path'];
         }
     }
     try {
-        image_sequence_apply_sequence_timeline_metadata($ref, $member_paths);
+        // Use dates collected during listing — do not re-ExifTool the whole sequence on NAS.
+        image_sequence_apply_timeline_from_dated_segment($ref, $segment, $cadence);
         if ($member_paths !== []) {
             image_sequence_extract_frame_metadata($ref, $member_paths[0]);
             // Default representative still (frame 0) into managed storage.

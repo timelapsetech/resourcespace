@@ -48,6 +48,10 @@ $image_sequence_seqcode_field = 0;
 # Photo resource type used for extras (stock Photo = 1).
 $image_sequence_photo_restype = 1;
 
+# When true, folder ingest uses filesystem mtime instead of ExifTool DateTimeOriginal.
+# Much faster on NAS/SMB; cadence split still works from mtime gaps.
+$image_sequence_fast_ingest = false;
+
 # Protect field configs from accidental deletion when plugin is active.
 $image_sequence_fieldvars = [
     'image_sequence_framecount_field',
