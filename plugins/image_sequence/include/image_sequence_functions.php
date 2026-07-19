@@ -1985,7 +1985,7 @@ function image_sequence_generate_proxy(int $ref): bool
                 $ffmpeg . ' -y -i %%SRC%% -frames:v 1 %%DST%%',
                 false,
                 [
-                    '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'is_valid_rs_path'),
+                    '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'image_sequence_is_valid_shell_path'),
                     '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
                 ]
             );
