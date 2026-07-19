@@ -33,3 +33,6 @@ $lang['aria_home_no_collections'] = 'Create a collection to filter here.';
 $lang['aria_home_assets'] = 'assets';
 $lang['aria_home_no_results'] = 'No assets match these filters.';
 $lang['aria_home_browse_library'] = 'Browse library';
+$lang['aria_home_load_more'] = 'Load more';
+$lang['aria_home_showing'] = 'Showing';
+$lang['aria_home_of'] = 'of';

@@ -70,24 +70,16 @@ function aria_home_render_card(array $resource, bool $span = false): void
            title="<?php echo escape($title); ?>">
             <?php
             if ($preview !== '') {
-                if (is_array($thumbnail) && function_exists('render_resource_image')) {
-                    // Ensure dimensions for ImageColourWrapper sizing
-                    if (empty($resource['thumb_width']) && !empty($thumbnail['width'])) {
-                        $resource['thumb_width'] = $thumbnail['width'];
-                    }
-                    if (empty($resource['thumb_height']) && !empty($thumbnail['height'])) {
-                        $resource['thumb_height'] = $thumbnail['height'];
-                    }
-                    render_resource_image($resource, $preview, 'xlthumbs');
-                } else {
-                    ?>
-                    <div class="ImageColourWrapper">
-                        <img src="<?php echo escape($preview); ?>"
-                             alt="<?php echo escape($title); ?>"
-                             loading="lazy">
-                    </div>
-                    <?php
-                }
+                // Always lazy-load grid thumbs — eager render_resource_image()
+                // floods the server with parallel download.php requests on home.
+                ?>
+                <div class="ImageColourWrapper">
+                    <img src="<?php echo escape($preview); ?>"
+                         alt="<?php echo escape($title); ?>"
+                         loading="lazy"
+                         decoding="async">
+                </div>
+                <?php
             } else {
                 echo get_nopreview_html(
                     (string) ($resource['file_extension'] ?? ''),
@@ -190,6 +182,8 @@ function aria_home_render_page(
 
     $ajax_url = $baseurl . '/plugins/aria_home/pages/ajax_browse.php';
     $carousel = count($featured_list) > 1;
+    $shown = count($browse['data']);
+    $has_more = $shown < (int) $browse['total'];
     ?>
     <div id="aria-home"
          class="aria-home"
@@ -197,7 +191,10 @@ function aria_home_render_page(
          data-featured-field="<?php echo (int) $ids['field']; ?>"
          data-kind="<?php echo escape($kind); ?>"
          data-collection="<?php echo (int) $collection; ?>"
-         data-tags="<?php echo escape(implode(',', $active_tags)); ?>">
+         data-tags="<?php echo escape(implode(',', $active_tags)); ?>"
+         data-offset="<?php echo (int) $shown; ?>"
+         data-per-page="<?php echo (int) $per_page; ?>"
+         data-total="<?php echo (int) $browse['total']; ?>">
 
         <?php if ($featured_list !== []) { ?>
             <section class="aria-hero<?php echo $carousel ? ' aria-hero--carousel' : ''; ?>"
@@ -221,10 +218,16 @@ function aria_home_render_page(
                                  <?php echo $active ? '' : 'aria-hidden="true"'; ?>>
                             <?php if ($fpreview !== '') { ?>
                                 <img class="aria-hero-image"
-                                     src="<?php echo escape($fpreview); ?>"
-                                     alt="<?php echo escape($ftitle); ?>"
-                                     <?php echo $i === 0 ? '' : 'loading="lazy"'; ?>>
+                                     <?php if ($i === 0) { ?>
+                                         src="<?php echo escape($fpreview); ?>"
+                                     <?php } else { ?>
+                                         data-src="<?php echo escape($fpreview); ?>"
+                                         loading="lazy"
+                                     <?php } ?>
+                                     alt="<?php echo escape($ftitle); ?>">
                             <?php } ?>
+                            <div class="aria-hero-aurora" aria-hidden="true"></div>
+                            <div class="aria-hero-fade" aria-hidden="true"></div>
                             <div class="aria-hero-content">
                                 <div class="aria-hero-eyebrow">
                                     <?php echo escape($lang['aria_home_featured'] ?? 'Featured'); ?>
@@ -252,8 +255,6 @@ function aria_home_render_page(
                         </article>
                     <?php } ?>
                 </div>
-                <div class="aria-hero-aurora" aria-hidden="true"></div>
-                <div class="aria-hero-fade" aria-hidden="true"></div>
                 <?php if ($carousel) { ?>
                     <div class="aria-hero-dots" role="tablist" aria-label="<?php echo escape($lang['aria_home_featured'] ?? 'Featured'); ?>">
                         <?php foreach ($featured_list as $i => $featured) { ?>
@@ -363,6 +364,21 @@ function aria_home_render_page(
                         }
                     }
                     ?>
+                </div>
+                <div class="aria-pager">
+                    <p class="aria-pager-status" id="aria-pager-status">
+                        <?php
+                        echo escape($lang['aria_home_showing'] ?? 'Showing')
+                            . ' <span id="aria-shown-count">' . (int) $shown . '</span> '
+                            . escape($lang['aria_home_of'] ?? 'of')
+                            . ' <span class="aria-total-count">' . (int) $browse['total'] . '</span>';
+                        ?>
+                    </p>
+                    <button type="button"
+                            id="aria-load-more"
+                            class="aria-btn aria-btn-ghost aria-load-more<?php echo $has_more ? '' : ' is-hidden'; ?>">
+                        <?php echo escape($lang['aria_home_load_more'] ?? 'Load more'); ?>
+                    </button>
                 </div>
             </div>
         </section>

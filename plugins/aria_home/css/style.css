@@ -71,6 +71,7 @@ body:has(#aria-home) #CentralSpace {
 .aria-hero-image {
     position: absolute;
     inset: 0;
+    z-index: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -85,22 +86,22 @@ body:has(#aria-home) #CentralSpace {
 .aria-hero-aurora {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    z-index: 1;
     background:
-        radial-gradient(at 20% 20%, rgba(212, 91, 184, 0.35), transparent 50%),
-        radial-gradient(at 80% 30%, rgba(107, 140, 255, 0.28), transparent 55%);
+        radial-gradient(at 20% 20%, rgba(212, 91, 184, 0.22), transparent 50%),
+        radial-gradient(at 80% 30%, rgba(107, 140, 255, 0.18), transparent 55%);
     mix-blend-mode: screen;
-    opacity: 0.7;
+    opacity: 0.55;
     pointer-events: none;
 }
 
 .aria-hero-fade {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    z-index: 2;
     background:
-        linear-gradient(90deg, rgba(28, 27, 36, 0.92) 0%, rgba(28, 27, 36, 0.45) 42%, transparent 70%),
-        linear-gradient(180deg, transparent 40%, var(--chroma-bg, #1c1b24) 100%);
+        linear-gradient(90deg, rgba(28, 27, 36, 0.72) 0%, rgba(28, 27, 36, 0.28) 42%, transparent 70%),
+        linear-gradient(180deg, transparent 45%, rgba(28, 27, 36, 0.55) 100%);
     pointer-events: none;
 }
 
@@ -109,7 +110,7 @@ body:has(#aria-home) #CentralSpace {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 4;
+    z-index: 3;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -534,6 +535,30 @@ body:has(#aria-home) #CentralSpace {
 }
 
 .aria-grid.is-loading {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.aria-pager {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 28px;
+    padding-bottom: 8px;
+}
+
+.aria-pager-status {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--chroma-muted, #a8a6b5);
+}
+
+.aria-load-more.is-hidden {
+    display: none;
+}
+
+.aria-load-more:disabled {
     opacity: 0.55;
     pointer-events: none;
 }

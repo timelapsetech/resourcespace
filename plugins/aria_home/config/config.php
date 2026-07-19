@@ -30,9 +30,9 @@ $aria_home_facet_sections = [
     'emotion' => ['label' => 'Emotion', 'field' => 75, 'enabled' => false, 'limit' => 16],
 ];
 
-# Grid page size
-$aria_home_per_page = 24;
+# Grid page size (keep low — home fires one preview request per card)
+$aria_home_per_page = 12;
 
-# Featured hero carousel
-$aria_home_hero_limit = 8;
+# Featured hero carousel (only the active slide loads eagerly)
+$aria_home_hero_limit = 3;
 $aria_home_hero_interval_ms = 7000;

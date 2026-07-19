@@ -1,5 +1,5 @@
 /**
- * Aria Home — filter / facet interactions + featured hero carousel
+ * Aria Home — filter / facet interactions, pagination, featured hero carousel
  */
 (function () {
     "use strict";
@@ -21,6 +21,9 @@
             kind: el.getAttribute("data-kind") || "all",
             collection: parseInt(el.getAttribute("data-collection") || "0", 10) || 0,
             tags: tags,
+            offset: parseInt(el.getAttribute("data-offset") || "0", 10) || 0,
+            perPage: parseInt(el.getAttribute("data-per-page") || "12", 10) || 12,
+            total: parseInt(el.getAttribute("data-total") || "0", 10) || 0,
         };
     }
 
@@ -28,6 +31,9 @@
         el.setAttribute("data-kind", state.kind);
         el.setAttribute("data-collection", String(state.collection));
         el.setAttribute("data-tags", state.tags.join(","));
+        el.setAttribute("data-offset", String(state.offset));
+        el.setAttribute("data-per-page", String(state.perPage));
+        el.setAttribute("data-total", String(state.total));
     }
 
     function setActiveButtons(el, state) {
@@ -44,6 +50,22 @@
         });
     }
 
+    function updatePager(el, state, hasMore) {
+        var shown = el.querySelector("#aria-shown-count");
+        var totals = el.querySelectorAll("#aria-asset-count-num, .aria-total-count");
+        var more = el.querySelector("#aria-load-more");
+        if (shown) {
+            shown.textContent = String(state.offset);
+        }
+        totals.forEach(function (node) {
+            node.textContent = String(state.total);
+        });
+        if (more) {
+            more.classList.toggle("is-hidden", !hasMore);
+            more.disabled = false;
+        }
+    }
+
     function toggleTag(state, tag) {
         var i = state.tags.indexOf(tag);
         if (i === -1) {
@@ -54,23 +76,43 @@
         return state;
     }
 
-    function refresh(el) {
+    function applySpan(grid) {
+        if (!grid) {
+            return;
+        }
+        var cards = grid.querySelectorAll(":scope > .resource-card");
+        cards.forEach(function (card, index) {
+            card.classList.toggle("chroma-span-2", index === 0 && cards.length > 3);
+        });
+    }
+
+    /**
+     * @param {HTMLElement} el
+     * @param {{reset?: boolean}} opts
+     */
+    function fetchPage(el, opts) {
+        var reset = !!(opts && opts.reset);
         var state = stateFromDom(el);
         var ajax = el.getAttribute("data-ajax");
         if (!ajax) {
             return;
         }
         var grid = el.querySelector("#aria-grid");
-        var count = el.querySelector("#aria-asset-count-num");
-        if (grid) {
+        var more = el.querySelector("#aria-load-more");
+        var requestOffset = reset ? 0 : state.offset;
+
+        if (grid && reset) {
             grid.classList.add("is-loading");
+        }
+        if (more && !reset) {
+            more.disabled = true;
         }
 
         var params = new URLSearchParams({
             kind: state.kind,
             collection: String(state.collection),
             tags: state.tags.join(","),
-            offset: "0",
+            offset: String(requestOffset),
         });
 
         fetch(ajax + "?" + params.toString(), {
@@ -84,28 +126,60 @@
                 if (!data || !data.ok) {
                     return;
                 }
+                state.total = parseInt(data.total, 10) || 0;
+                state.offset = parseInt(data.next_offset, 10) || 0;
+                if (data.per_page) {
+                    state.perPage = parseInt(data.per_page, 10) || state.perPage;
+                }
+                writeState(el, state);
+
                 if (grid) {
-                    grid.innerHTML = data.html || "";
-                    grid.classList.remove("is-loading");
-                    var cards = grid.querySelectorAll(":scope > .resource-card");
-                    cards.forEach(function (card, index) {
-                        card.classList.toggle("chroma-span-2", index === 0 && cards.length > 3);
-                    });
+                    if (reset) {
+                        grid.innerHTML = data.html || "";
+                        grid.classList.remove("is-loading");
+                    } else if (data.html) {
+                        var empty = grid.querySelector(".aria-empty");
+                        if (empty) {
+                            empty.remove();
+                        }
+                        grid.insertAdjacentHTML("beforeend", data.html);
+                    }
+                    applySpan(grid);
                 }
-                if (count) {
-                    count.textContent = String(data.total || 0);
-                }
+                updatePager(el, state, !!data.has_more);
                 setActiveButtons(el, state);
             })
             .catch(function () {
                 if (grid) {
                     grid.classList.remove("is-loading");
                 }
+                if (more) {
+                    more.disabled = false;
+                }
             });
+    }
+
+    function refresh(el) {
+        fetchPage(el, { reset: true });
+    }
+
+    function loadMore(el) {
+        fetchPage(el, { reset: false });
     }
 
     function prefersReducedMotion() {
         return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    }
+
+    function hydrateHeroSlide(slide) {
+        if (!slide) {
+            return;
+        }
+        var img = slide.querySelector("img.aria-hero-image[data-src]");
+        if (img && !img.getAttribute("src")) {
+            img.setAttribute("src", img.getAttribute("data-src"));
+            img.removeAttribute("data-src");
+        }
     }
 
     function bindHeroCarousel(hero) {
@@ -135,6 +209,7 @@
             if (!slide) {
                 return;
             }
+            hydrateHeroSlide(slide);
             if (prev) {
                 prev.classList.remove("is-active");
                 prev.setAttribute("aria-hidden", "true");
@@ -212,10 +287,17 @@
             var kindBtn = e.target.closest(".aria-kind-btn");
             var facetBtn = e.target.closest(".aria-facet-row");
             var tagBtn = e.target.closest(".aria-pill[data-tag], .aria-tag[data-tag]");
-            if (!kindBtn && !facetBtn && !tagBtn) {
+            var moreBtn = e.target.closest("#aria-load-more");
+            if (!kindBtn && !facetBtn && !tagBtn && !moreBtn) {
                 return;
             }
             e.preventDefault();
+
+            if (moreBtn) {
+                loadMore(el);
+                return;
+            }
+
             var state = stateFromDom(el);
 
             if (kindBtn) {
@@ -231,6 +313,7 @@
                 }
             }
 
+            state.offset = 0;
             writeState(el, state);
             setActiveButtons(el, state);
             refresh(el);

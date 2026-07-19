@@ -25,12 +25,20 @@ if ($tags_raw !== '') {
     }
 }
 $offset = max(0, (int) getval('offset', 0));
-$per_page = (int) ($GLOBALS['aria_home_per_page'] ?? 24);
+$per_page = max(1, (int) ($GLOBALS['aria_home_per_page'] ?? 12));
 
 $browse = aria_home_browse($kind, $collection, $active_tags, $offset, $per_page);
+$returned = count($browse['data']);
+$next_offset = $offset + $returned;
+$total = (int) $browse['total'];
 
 echo json_encode([
     'ok' => true,
-    'total' => $browse['total'],
+    'total' => $total,
+    'offset' => $offset,
+    'per_page' => $per_page,
+    'returned' => $returned,
+    'next_offset' => $next_offset,
+    'has_more' => $next_offset < $total,
     'html' => aria_home_render_grid_html($browse['data']),
 ]);
