@@ -81,6 +81,21 @@ function openai_gpt_update_field($resources,array $target_field,array $values, s
         }
     }
 
+    // Per-field AI locks always win — including force_overwrite / rep-frame regenerations.
+    $unlocked_resources = [];
+    foreach ($resources as $resource_ref) {
+        if (openai_gpt_field_is_locked((int) $resource_ref, (int) $target_field['ref'])) {
+            debug("openai_gpt - skipping resource {$resource_ref} field #{$target_field['ref']} - AI locked by manual curation");
+            $results[$resource_ref] = false;
+            continue;
+        }
+        $unlocked_resources[] = $resource_ref;
+    }
+    $resources = $unlocked_resources;
+    if (count($resources) === 0) {
+        return $results;
+    }
+
     $valid_response = false;
     if (trim($file) != "") {
         // Shrink large stills before base64 — local vision models choke on multi-MB originals.
@@ -248,7 +263,11 @@ function openai_gpt_update_field($resources,array $target_field,array $values, s
             debug("openai_gpt_update_field() - resource # " . $resource . ", target field #" . $target_field["ref"]);
             // Set a flag to prevent any possibility of infinite recursion within update_field()
             $openai_gpt_processed[$resource . "_" . $target_field["ref"]] = true;
+            // Mark AI writes so Aftersaveresourcedata / update_field hooks do not auto-lock.
+            $prev_ai_write = $GLOBALS['openai_gpt_ai_write'] ?? false;
+            $GLOBALS['openai_gpt_ai_write'] = true;
             $result = update_field($resource,$target_field["ref"],$newvalue);
+            $GLOBALS['openai_gpt_ai_write'] = $prev_ai_write;
             $results[$resource] = $result;
         } else {
             $results[$resource] = false;
@@ -792,4 +811,232 @@ function openai_gpt_process_image_fields(int $ref, bool $force_overwrite = false
     }
 
     return $results;
+}
+
+/**
+ * Whether a metadata field is configured for AI processing.
+ */
+function openai_gpt_is_ai_managed_field(int $field_ref): bool
+{
+    if ($field_ref <= 0) {
+        return false;
+    }
+
+    static $cache = [];
+    if (array_key_exists($field_ref, $cache)) {
+        return $cache[$field_ref];
+    }
+
+    $field = get_resource_type_field($field_ref);
+    if (!is_array($field)) {
+        $cache[$field_ref] = false;
+        return false;
+    }
+
+    $cache[$field_ref] = (
+        trim((string) ($field['openai_gpt_prompt'] ?? '')) !== ''
+        && ($field['openai_gpt_input_field'] ?? null) !== null
+        && ($field['openai_gpt_input_field'] ?? '') !== ''
+        && in_array($field['type'], $GLOBALS['valid_ai_field_types'] ?? [], true)
+    );
+
+    return $cache[$field_ref];
+}
+
+/**
+ * Ensure the AI lock table exists (dbstruct may not have run yet).
+ */
+function openai_gpt_ensure_lock_table(): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $ready = true;
+
+    $exists = ps_value(
+        "SELECT COUNT(*) AS `value` FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'resource_openai_gpt_lock'",
+        [],
+        0
+    );
+    if ((int) $exists > 0) {
+        return;
+    }
+
+    ps_query(
+        "CREATE TABLE IF NOT EXISTS resource_openai_gpt_lock (
+            resource int(11) NOT NULL,
+            resource_type_field int(11) NOT NULL,
+            user int(11) DEFAULT NULL,
+            created datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (resource, resource_type_field),
+            KEY resource (resource)
+        )",
+        [],
+        '',
+        -1,
+        false
+    );
+}
+
+/**
+ * Whether AI is locked out of writing a resource field (manual curation).
+ */
+function openai_gpt_field_is_locked(int $resource, int $field): bool
+{
+    if ($resource <= 0 || $field <= 0) {
+        return false;
+    }
+
+    openai_gpt_ensure_lock_table();
+
+    $locked = ps_value(
+        "SELECT resource AS `value` FROM resource_openai_gpt_lock WHERE resource = ? AND resource_type_field = ? LIMIT 1",
+        ['i', $resource, 'i', $field],
+        0
+    );
+
+    return (int) $locked > 0;
+}
+
+/**
+ * Return field refs that are AI-locked for a resource.
+ *
+ * @return array<int, int>
+ */
+function openai_gpt_get_locked_fields(int $resource): array
+{
+    if ($resource <= 0) {
+        return [];
+    }
+
+    openai_gpt_ensure_lock_table();
+
+    $rows = ps_array(
+        "SELECT resource_type_field AS `value` FROM resource_openai_gpt_lock WHERE resource = ?",
+        ['i', $resource]
+    );
+
+    return array_map('intval', $rows);
+}
+
+/**
+ * Lock an AI-managed field so future AI writes skip it.
+ */
+function openai_gpt_lock_field(int $resource, int $field): bool
+{
+    if ($resource <= 0 || $field <= 0 || !openai_gpt_is_ai_managed_field($field)) {
+        return false;
+    }
+
+    openai_gpt_ensure_lock_table();
+
+    global $userref;
+    $user = (isset($userref) && is_int_loose($userref) && (int) $userref > 0) ? (int) $userref : 0;
+
+    if (openai_gpt_field_is_locked($resource, $field)) {
+        ps_query(
+            "UPDATE resource_openai_gpt_lock SET user = ?, created = NOW() WHERE resource = ? AND resource_type_field = ?",
+            ['i', $user, 'i', $resource, 'i', $field]
+        );
+    } else {
+        ps_query(
+            "INSERT INTO resource_openai_gpt_lock (resource, resource_type_field, user, created) VALUES (?, ?, ?, NOW())",
+            ['i', $resource, 'i', $field, 'i', $user]
+        );
+    }
+
+    debug("openai_gpt - locked resource #{$resource} field #{$field} from AI overwrite");
+    return true;
+}
+
+/**
+ * Remove an AI lock so the field can be regenerated.
+ */
+function openai_gpt_unlock_field(int $resource, int $field): bool
+{
+    if ($resource <= 0 || $field <= 0) {
+        return false;
+    }
+
+    openai_gpt_ensure_lock_table();
+
+    ps_query(
+        "DELETE FROM resource_openai_gpt_lock WHERE resource = ? AND resource_type_field = ?",
+        ['i', $resource, 'i', $field]
+    );
+
+    debug("openai_gpt - unlocked resource #{$resource} field #{$field} for AI overwrite");
+    return true;
+}
+
+/**
+ * Auto-lock AI-managed fields that were manually edited to a non-empty value.
+ * Clearing a field removes the lock so AI can refill it later.
+ *
+ * @param array<int, array<int, mixed>> $updated_resources resource => field => values
+ */
+function openai_gpt_auto_lock_manual_edits(array $updated_resources): void
+{
+    if (!empty($GLOBALS['openai_gpt_ai_write'])) {
+        return;
+    }
+
+    foreach ($updated_resources as $resource => $field_updates) {
+        $resource = (int) $resource;
+        if ($resource <= 0 || !is_array($field_updates)) {
+            continue;
+        }
+
+        foreach ($field_updates as $field => $values) {
+            $field = (int) $field;
+            if (!openai_gpt_is_ai_managed_field($field)) {
+                continue;
+            }
+
+            $has_value = false;
+            foreach ((array) $values as $value) {
+                if (trim((string) $value) !== '') {
+                    $has_value = true;
+                    break;
+                }
+            }
+
+            if ($has_value) {
+                openai_gpt_lock_field($resource, $field);
+            } else {
+                openai_gpt_unlock_field($resource, $field);
+            }
+        }
+    }
+}
+
+/**
+ * Render the below-field AI lock notice + unlock link on the edit form.
+ */
+function openai_gpt_render_field_lock_ui(int $resource, int $field_ref): void
+{
+    global $lang;
+
+    $locked_label = $lang['openai_gpt_field_locked'] ?? 'Protected from AI overwrite';
+    $unlock_label = $lang['openai_gpt_unlock_field'] ?? 'Allow AI to update';
+    ?>
+    <div class="Question openai_gpt_ai_lock"
+        data-field="<?php echo $field_ref; ?>"
+        data-resource="<?php echo $resource; ?>"
+        style="border-top:none;padding-top:0;margin-top:-0.4em;">
+        <label>&nbsp;</label>
+        <div class="Fixed" style="font-weight:normal;opacity:0.9;">
+            <i class="icon-lock" aria-hidden="true"></i>
+            <?php echo escape($locked_label); ?>
+            —
+            <a href="#" class="openai_gpt_unlock_btn"
+                data-resource="<?php echo $resource; ?>"
+                data-field="<?php echo $field_ref; ?>">
+                <?php echo escape($unlock_label); ?>
+            </a>
+        </div>
+        <div class="clearerleft"></div>
+    </div>
+    <?php
 }

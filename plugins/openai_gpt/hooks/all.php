@@ -163,6 +163,11 @@ function HookOpenai_gptAllAftersaveresourcedata($r, $all_nodes_to_add, $all_node
         {
         return false;
         }
+
+    // Manual edits of AI-managed fields auto-lock so force_overwrite cannot replace them.
+    if (is_array($updated_resources) && count($updated_resources) > 0) {
+        openai_gpt_auto_lock_manual_edits($updated_resources);
+    }
     
     $refs = (is_array($r) ? $r : [$r]);
     debug("openai_gpt Aftersaveresourcedata - resources to update:  " . implode(",",$refs));
@@ -294,4 +299,91 @@ function HookOpenai_gptAllAddtriggerablejob(): array
     ];
 
     return array_merge($existing_scripts, $scripts);
+}
+
+/**
+ * Show AI-lock controls on the edit form for every field type the same way.
+ * Uses afterfielddisplay so we receive the field explicitly (not via globals).
+ *
+ * @param int   $n     Field index on the edit form
+ * @param array $field Field data from get_resource_field_data()
+ */
+function HookOpenai_gptAllAfterfielddisplay($n, $field)
+{
+    global $ref, $use, $lang, $multiple, $upload_review_mode;
+
+    if (!empty($multiple) || !empty($upload_review_mode)) {
+        return false;
+    }
+
+    if (!is_array($field) || !isset($field['ref'])) {
+        return false;
+    }
+
+    // Prefer the resource being edited; $use can differ when copying-from.
+    $resource = (int) ($ref ?? 0);
+    if ($resource <= 0 && isset($use)) {
+        $resource = (int) $use;
+    }
+
+    $field_ref = (int) $field['ref'];
+    if ($resource <= 0 || $field_ref <= 0 || !openai_gpt_is_ai_managed_field($field_ref)) {
+        return false;
+    }
+
+    if (!openai_gpt_field_is_locked($resource, $field_ref)) {
+        return false;
+    }
+
+    openai_gpt_render_field_lock_ui($resource, $field_ref);
+    return false;
+}
+
+/**
+ * Also render inside the Question (before the input) so the control sits with the
+ * field chrome for every type — same float:right pattern as upload lock buttons.
+ */
+function HookOpenai_gptAllAddfieldextras()
+{
+    global $field, $ref, $use, $multiple, $upload_review_mode;
+
+    if (!empty($multiple) || !empty($upload_review_mode)) {
+        return;
+    }
+
+    // Prefer the field passed into display_field via the edit.php loop.
+    $current = $field ?? ($GLOBALS['field'] ?? null);
+    if (!is_array($current) || !isset($current['ref'])) {
+        return;
+    }
+
+    $resource = (int) ($ref ?? 0);
+    if ($resource <= 0 && isset($use)) {
+        $resource = (int) $use;
+    }
+
+    $field_ref = (int) $current['ref'];
+    if ($resource <= 0 || $field_ref <= 0 || !openai_gpt_is_ai_managed_field($field_ref)) {
+        return;
+    }
+
+    if (!openai_gpt_field_is_locked($resource, $field_ref)) {
+        return;
+    }
+
+    // Avoid duplicating if afterfielddisplay will also run — only show the compact
+    // in-field lock icon here; the text+link row is rendered after the question.
+    global $lang;
+    $locked_label = $lang['openai_gpt_field_locked'] ?? 'Protected from AI overwrite';
+    $unlock_label = $lang['openai_gpt_unlock_field'] ?? 'Allow AI to update';
+    ?>
+    <button type="button"
+        class="lock_icon openai_gpt_unlock_btn openai_gpt_ai_lock"
+        data-field="<?php echo $field_ref; ?>"
+        data-resource="<?php echo $resource; ?>"
+        title="<?php echo escape($locked_label . ' — ' . $unlock_label); ?>"
+        aria-label="<?php echo escape($locked_label . ' — ' . $unlock_label); ?>">
+        <i class="icon-lock" aria-hidden="true"></i>
+    </button>
+    <?php
 }

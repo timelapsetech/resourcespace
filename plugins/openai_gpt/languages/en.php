@@ -45,3 +45,7 @@ $lang["openai_gpt_provider_override"] = "The provider has been locked in global 
 $lang["ollama_name"] = "Ollama";
 $lang["ollama_model"] = "Ollama model to use (e.g. 'gemma3:12b')";
 $lang["ollama_endpoint"] = "Ollama endpoint to use (e.g http://[IP]:11434/v1/chat/completions";
+$lang["openai_gpt_field_locked"] = "Protected from AI overwrite";
+$lang["openai_gpt_unlock_field"] = "Allow AI to update";
+$lang["openai_gpt_field_unlocked"] = "AI may update this field again.";
+$lang["openai_gpt_not_ai_field"] = "Not an AI-managed field.";

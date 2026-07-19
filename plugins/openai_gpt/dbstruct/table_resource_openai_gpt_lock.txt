@@ -1,0 +1,4 @@
+resource,int(11),NO,PRI,,
+resource_type_field,int(11),NO,PRI,,
+user,int(11),YES,,,
+created,datetime,YES,,CURRENT_TIMESTAMP,
