@@ -53,6 +53,32 @@ function HookImage_sequenceAllAfter_activate_plugin($name = '')
 }
 
 /**
+ * Resolve staticsync / in-place originals under $image_sequence_sync_roots (not only $syncdir).
+ *
+ * Core get_resource_path() always prefixes $syncdir unless this hook returns an absolute path.
+ * Extra stills and sequence frames stored on secondary roots (e.g. NAS volumes) need this.
+ *
+ * @param int    $ref
+ * @param string $fp          Relative file_path from resource row
+ * @param int    $alternative
+ *
+ * @return string|false Absolute path, or false to keep core $syncdir behaviour
+ */
+function HookImage_sequenceAllModifysyncdir($ref = 0, $fp = '', $alternative = -1)
+{
+    if ((int) $alternative > 0 || !is_string($fp) || trim($fp) === '') {
+        return false;
+    }
+
+    $abs = image_sequence_relative_to_absolute($fp);
+    if ($abs !== null && (is_file($abs) || is_dir($abs))) {
+        return $abs;
+    }
+
+    return false;
+}
+
+/**
  * Skip StaticSync import for frames already claimed by an image sequence (or extras).
  *
  * @param string $shortpath Relative path under $syncdir

@@ -407,6 +407,15 @@ function is_valid_rs_path(string $path, array $override_paths = []): bool
         if (isset($GLOBALS['tempdir'])) {
             $default_paths[] = $GLOBALS['tempdir'];
         }
+        // Image Sequence (and similar) may keep originals on secondary scan roots.
+        if (!empty($GLOBALS['image_sequence_sync_roots']) && is_array($GLOBALS['image_sequence_sync_roots'])) {
+            foreach ($GLOBALS['image_sequence_sync_roots'] as $extra_root) {
+                $extra_root = trim((string) $extra_root);
+                if ($extra_root !== '') {
+                    $default_paths[] = $extra_root;
+                }
+            }
+        }
     }
     $allowed_paths = array_filter(array_map('trim', array_unique($default_paths)));
     debug('allowed_paths = ' . implode(', ', $allowed_paths));

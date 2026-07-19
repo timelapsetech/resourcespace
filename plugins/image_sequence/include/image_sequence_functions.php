@@ -428,9 +428,6 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
 
     $extension = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
     $still_rel = image_sequence_absolute_to_relative($frame_path);
-    if ($still_rel === null) {
-        return;
-    }
 
     $resource = get_resource_data($ref);
     if (!is_array($resource)) {
@@ -438,13 +435,32 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
     }
     $manifest_rel = (string) ($resource['file_path'] ?? '');
     $manifest_ext = (string) ($resource['file_extension'] ?? 'json');
+    $swapped = false;
+    $created_temp_original = '';
 
     // Point ResourceSpace at the still so ExifTool / get_resource_path resolve correctly.
-    ps_query(
-        'UPDATE resource SET file_path = ?, file_extension = ? WHERE ref = ?',
-        ['s', $still_rel, 's', $extension, 'i', $ref]
-    );
-    unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
+    // Prefer a sync-root relative path; for local temp copies, park the file at the
+    // resource original path briefly (sequences normally keep originals as JSON).
+    if ($still_rel !== null) {
+        ps_query(
+            'UPDATE resource SET file_path = ?, file_extension = ? WHERE ref = ?',
+            ['s', $still_rel, 's', $extension, 'i', $ref]
+        );
+        unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
+        $swapped = true;
+    } else {
+        $original_path = get_resource_path($ref, true, '', true, $extension);
+        if (@copy($frame_path, $original_path) && is_file($original_path)) {
+            ps_query(
+                'UPDATE resource SET file_path = ?, file_extension = ? WHERE ref = ?',
+                ['s', '', 's', $extension, 'i', $ref]
+            );
+            unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
+            $swapped = true;
+            $created_temp_original = $original_path;
+            $frame_path = $original_path;
+        }
+    }
 
     // Width / height / DPI / byte size into resource_dimensions (shown in file properties).
     try {
@@ -504,25 +520,31 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
     }
 
     // Full ExifTool → mapped metadata fields (camera, lens, ISO, etc.).
-    $prev_no_exif = $_POST['no_exif'] ?? null;
-    $_POST['no_exif'] = ''; // force extract (empty → treated as "yes, extract")
-    try {
-        extract_exif_comment($ref, $extension);
-    } catch (Throwable $e) {
-        debug('image_sequence_extract_frame_metadata EXIF: ' . $e->getMessage());
-    }
-    if ($prev_no_exif === null) {
-        unset($_POST['no_exif']);
-    } else {
-        $_POST['no_exif'] = $prev_no_exif;
-    }
+    if ($swapped) {
+        $prev_no_exif = $_POST['no_exif'] ?? null;
+        $_POST['no_exif'] = ''; // force extract (empty → treated as "yes, extract")
+        try {
+            extract_exif_comment($ref, $extension);
+        } catch (Throwable $e) {
+            debug('image_sequence_extract_frame_metadata EXIF: ' . $e->getMessage());
+        }
+        if ($prev_no_exif === null) {
+            unset($_POST['no_exif']);
+        } else {
+            $_POST['no_exif'] = $prev_no_exif;
+        }
 
-    // Restore manifest pointer; keep resource_dimensions from the still.
-    ps_query(
-        'UPDATE resource SET file_path = ?, file_extension = ? WHERE ref = ?',
-        ['s', $manifest_rel, 's', $manifest_ext !== '' ? $manifest_ext : 'json', 'i', $ref]
-    );
-    unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
+        // Restore manifest pointer; keep resource_dimensions from the still.
+        ps_query(
+            'UPDATE resource SET file_path = ?, file_extension = ? WHERE ref = ?',
+            ['s', $manifest_rel, 's', $manifest_ext !== '' ? $manifest_ext : 'json', 'i', $ref]
+        );
+        unset($GLOBALS['get_resource_data_cache'][$ref], $GLOBALS['get_resource_path_fpcache'][$ref]);
+
+        if ($created_temp_original !== '' && is_file($created_temp_original)) {
+            @unlink($created_temp_original);
+        }
+    }
 }
 
 /**
@@ -1869,6 +1891,10 @@ function image_sequence_is_safe_member_basename(string $name): bool
 /**
  * Absolute paths for sequence member frames in order.
  *
+ * Avoids per-frame realpath()/is_file() — those are extremely slow on SMB/NAS
+ * volumes (hundreds of frames × round-trips). Basenames are already validated;
+ * callers that need a specific file should check that path only.
+ *
  * @return list<string>
  */
 function image_sequence_member_absolute_paths(array $sequence_data): array
@@ -1877,9 +1903,12 @@ function image_sequence_member_absolute_paths(array $sequence_data): array
     if ($folder_abs === null) {
         return [];
     }
-    $folder_abs = rtrim($folder_abs, '/');
+    $folder_abs = rtrim(str_replace('\\', '/', $folder_abs), '/');
+    // One directory resolve is enough; do not touch every frame.
     $folder_real = realpath($folder_abs);
-    if ($folder_real === false) {
+    if ($folder_real !== false) {
+        $folder_abs = rtrim(str_replace('\\', '/', $folder_real), '/');
+    } elseif (!is_dir($folder_abs)) {
         return [];
     }
 
@@ -1889,19 +1918,40 @@ function image_sequence_member_absolute_paths(array $sequence_data): array
         if (!image_sequence_is_safe_member_basename($name)) {
             continue;
         }
-        $path = $folder_real . DIRECTORY_SEPARATOR . $name;
-        $real = realpath($path);
-        if ($real === false || !is_file($real)) {
-            continue;
-        }
-        // Ensure resolved path stays inside the sequence folder.
-        if (strpos($real, $folder_real . DIRECTORY_SEPARATOR) !== 0 && $real !== $folder_real) {
-            continue;
-        }
-        $paths[] = $real;
+        $paths[] = $folder_abs . '/' . $name;
     }
 
     return $paths;
+}
+
+/**
+ * Absolute path for a single zero-based member frame (fast — no full-sequence scan).
+ */
+function image_sequence_member_path_at(array $sequence_data, int $frame_index): ?string
+{
+    $members = $sequence_data['member_files_list'] ?? [];
+    if (!is_array($members) || $members === []) {
+        return null;
+    }
+    $frame_index = image_sequence_clamp_frame_index($frame_index, count($members));
+    $name = (string) ($members[$frame_index] ?? '');
+    if (!image_sequence_is_safe_member_basename($name)) {
+        return null;
+    }
+
+    $folder_abs = image_sequence_relative_to_absolute((string) $sequence_data['folder_path']);
+    if ($folder_abs === null) {
+        return null;
+    }
+    $folder_abs = rtrim(str_replace('\\', '/', $folder_abs), '/');
+    $folder_real = realpath($folder_abs);
+    if ($folder_real !== false) {
+        $folder_abs = rtrim(str_replace('\\', '/', $folder_real), '/');
+    }
+
+    $path = $folder_abs . '/' . $name;
+
+    return is_file($path) ? $path : null;
 }
 
 function image_sequence_queue_proxy_job(int $ref): void
@@ -2208,8 +2258,9 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
             'message' => $lang['image_sequence_no_data'] ?? 'No image sequence data found for this resource.',
         ];
     }
-    $paths = image_sequence_member_absolute_paths($data);
-    $path_count = count($paths);
+
+    $members = $data['member_files_list'] ?? [];
+    $path_count = is_array($members) ? count($members) : 0;
     if ($path_count === 0) {
         return [
             'ok' => false,
@@ -2220,37 +2271,112 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
     // Clamp — proxy scrubbing at EOF often reports frame_count (one past last index).
     $frame_index = image_sequence_clamp_frame_index($frame_index, $path_count);
 
+    // Resolve only the chosen frame (never realpath the whole sequence — slow on NAS).
+    $frame_path = image_sequence_member_path_at($data, $frame_index);
+    if ($frame_path === null) {
+        return [
+            'ok' => false,
+            'message' => $lang['image_sequence_rep_frame_no_files'] ?? 'Sequence frame files are missing on disk.',
+        ];
+    }
+
     ps_query(
         'UPDATE resource_image_sequence SET representative_frame = ? WHERE resource = ?',
         ['i', $frame_index, 'i', $ref]
     );
     image_sequence_update_metadata_fields($ref, ['representative_frame' => $frame_index]);
 
-    $frame_path = $paths[$frame_index];
     $extension = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
+    if ($extension === '') {
+        $extension = 'jpg';
+    }
 
+    // One NAS→local copy, then do EXIF / alt / poster from the local file so we
+    // don't re-read a 10MB still over SMB (especially while a proxy encode is running).
+    $work_path = $frame_path;
+    $temp_copy = '';
+    if (image_sequence_path_under_scan_root($frame_path)) {
+        $temp_dir = get_temp_dir(false, 'imgseq_rep_' . $ref);
+        $temp_copy = $temp_dir . '/frame_' . $frame_index . '.' . $extension;
+        if (@copy($frame_path, $temp_copy) && is_file($temp_copy)) {
+            $work_path = $temp_copy;
+        } else {
+            $temp_copy = '';
+        }
+    }
+
+    // EXIF from this still only — do not re-run full-sequence timeline analysis here
+    // (that walks every frame and can take minutes on SMB while a proxy encode is running).
     try {
-        image_sequence_extract_frame_metadata($ref, $frame_path);
-        image_sequence_apply_sequence_timeline_metadata($ref, $paths);
+        image_sequence_extract_frame_metadata($ref, $work_path);
     } catch (Throwable $e) {
         debug('image_sequence_set_representative_frame metadata: ' . $e->getMessage());
     }
 
     // Full-res still into managed storage as a replaceable alternative file.
     try {
-        image_sequence_save_representative_alt_file($ref, $frame_path, $frame_index);
+        image_sequence_save_representative_alt_file($ref, $work_path, $frame_index);
     } catch (Throwable $e) {
         debug('image_sequence_set_representative_frame alt file: ' . $e->getMessage());
     }
 
-    // Refresh poster from chosen frame (prefer direct copy for stills).
-    // Keep this AJAX request fast — full create_previews() was too heavy here.
-    $poster_jpg = get_resource_path($ref, true, 'pre', true, 'jpg');
-    $copied = false;
-    if (in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
-        $copied = @copy($frame_path, $poster_jpg);
+    // Refresh search/view poster from the chosen frame without a full create_previews().
+    image_sequence_refresh_poster_from_still($ref, $work_path, $extension);
+
+    if ($temp_copy !== '' && is_file($temp_copy)) {
+        @unlink($temp_copy);
     }
-    if (!$copied) {
+
+    // Re-run image AI fields against the chosen representative frame (offline — Moondream is slow).
+    image_sequence_queue_ai_metadata($ref, true);
+
+    return [
+        'ok' => true,
+        'message' => $lang['image_sequence_rep_frame_set'] ?? 'Representative frame updated.',
+        'frame' => $frame_index,
+    ];
+}
+
+/**
+ * Write pre/thm/col/tiny JPEGs from a still without copying multi‑MB masters into thumbs.
+ */
+function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, string $extension = ''): void
+{
+    if ($ref <= 0 || $frame_path === '' || !is_file($frame_path)) {
+        return;
+    }
+    if ($extension === '') {
+        $extension = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
+    }
+
+    $poster_jpg = get_resource_path($ref, true, 'pre', true, 'jpg');
+    $wrote = false;
+
+    // Prefer ImageMagick: one decode, sensible preview size, then derive thumbs.
+    // Geometry must be a placeholder — an unquoted ">" is a shell redirect.
+    $convert = get_utility_path('im-convert');
+    if ($convert !== false) {
+        try {
+            run_command(
+                $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% -quality 85 %%DST%%',
+                false,
+                [
+                    '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
+                    '%%GEOM%%' => new CommandPlaceholderArg('1280x1280', [CommandPlaceholderArg::class, 'alwaysValid']),
+                    '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
+                ]
+            );
+            $wrote = is_file($poster_jpg) && filesize($poster_jpg) > 0;
+        } catch (Throwable $e) {
+            debug('image_sequence_refresh_poster_from_still convert: ' . $e->getMessage());
+        }
+    }
+
+    if (!$wrote && in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+        $wrote = @copy($frame_path, $poster_jpg) && is_file($poster_jpg);
+    }
+
+    if (!$wrote) {
         $ffmpeg = get_utility_path('ffmpeg');
         if ($ffmpeg !== false) {
             try {
@@ -2262,30 +2388,47 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
                         '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
                     ]
                 );
+                $wrote = is_file($poster_jpg) && filesize($poster_jpg) > 0;
             } catch (Throwable $e) {
-                debug('image_sequence_set_representative_frame poster: ' . $e->getMessage());
+                debug('image_sequence_refresh_poster_from_still ffmpeg: ' . $e->getMessage());
             }
         }
     }
-    if (file_exists($poster_jpg)) {
-        foreach (['thm', 'col', 'tiny'] as $size) {
-            $dest = get_resource_path($ref, true, $size, true, 'jpg');
-            @copy($poster_jpg, $dest);
-        }
-        ps_query(
-            "UPDATE resource SET has_image = 1, preview_extension = 'jpg' WHERE ref = ?",
-            ['i', $ref]
-        );
+
+    if (!$wrote || !is_file($poster_jpg)) {
+        return;
     }
 
-    // Re-run image AI fields against the chosen representative frame (offline — Moondream is slow).
-    image_sequence_queue_ai_metadata($ref, true);
-
-    return [
-        'ok' => true,
-        'message' => $lang['image_sequence_rep_frame_set'] ?? 'Representative frame updated.',
-        'frame' => $frame_index,
+    $thumb_specs = [
+        'thm' => '250x250',
+        'col' => '100x100',
+        'tiny' => '75x75',
     ];
+    foreach ($thumb_specs as $size => $geometry) {
+        $dest = get_resource_path($ref, true, $size, true, 'jpg');
+        if ($convert !== false) {
+            try {
+                run_command(
+                    $convert . ' %%SRC%%[0] -auto-orient -thumbnail %%GEOM%% -quality 80 %%DST%%',
+                    false,
+                    [
+                        '%%SRC%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
+                        '%%GEOM%%' => new CommandPlaceholderArg($geometry, [CommandPlaceholderArg::class, 'alwaysValid']),
+                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                    ]
+                );
+                continue;
+            } catch (Throwable $e) {
+                debug('image_sequence_refresh_poster_from_still thumb: ' . $e->getMessage());
+            }
+        }
+        @copy($poster_jpg, $dest);
+    }
+
+    ps_query(
+        "UPDATE resource SET has_image = 1, preview_extension = 'jpg' WHERE ref = ?",
+        ['i', $ref]
+    );
 }
 
 /**

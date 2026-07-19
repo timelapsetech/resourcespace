@@ -14,3 +14,5 @@
 1.10 Search cards show sequence code as a pill beside status
 1.11 Fix CLI-queued proxy/AI jobs to assign a real user so offline_jobs can run them
 1.11 Representative frame saved as full-res alternative file in filestore (replaced when changed)
+1.12 Resolve in-place originals via modifysyncdir + allow secondary scan roots in is_valid_rs_path so ImageMagick/ExifTool previews work for NAS-stored stills
+1.13 Fast representative-frame save: resolve one frame only (no per-frame NAS realpath), skip timeline re-scan, local temp copy for EXIF/alt/poster
