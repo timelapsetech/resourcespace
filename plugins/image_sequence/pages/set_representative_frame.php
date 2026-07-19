@@ -25,16 +25,26 @@ if ($ref <= 0 || !get_edit_access($ref)) {
 }
 
 $resource = get_resource_data($ref);
-if (!is_array($resource) || !image_sequence_is_sequence_resource($resource)) {
-    $send_json(['ok' => false, 'message' => $lang['image_sequence_no_data']], 400);
+if (!is_array($resource)) {
+    $send_json(['ok' => false, 'message' => $lang['image_sequence_no_data'] ?? 'Resource not found.'], 400);
+}
+
+$is_sequence = image_sequence_is_sequence_resource($resource);
+$is_video = image_sequence_is_video_resource($resource);
+if (!$is_sequence && !$is_video) {
+    $send_json([
+        'ok' => false,
+        'message' => $lang['image_sequence_no_data'] ?? 'Not an image sequence or video resource.',
+    ], 400);
 }
 
 enforcePostRequest(getval('ajax', '') == 'true');
 
-// Nested buffer only — do not wipe parent buffers (that produced empty HTTP bodies).
 ob_start();
 try {
-    $result = image_sequence_set_representative_frame($ref, $frame);
+    $result = $is_video
+        ? image_sequence_set_video_representative_frame($ref, $frame)
+        : image_sequence_set_representative_frame($ref, $frame);
 } catch (Throwable $e) {
     ob_end_clean();
     $send_json([

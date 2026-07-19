@@ -8,6 +8,9 @@ or staging writes there). Manifests and proxy/poster files go to filestore; web
 uploads stage under $storagedir. The plugin builds an FFmpeg proxy video for
 preview, supports picking a representative frame (EXIF into metadata), and
 auto-splits large still folders using capture-time cadence (Ingestr-style).
+The same Omakase player also works on standard video resources: in/out marks,
+representative frame → poster, full-res still as an alternative file, and a
+related Photo resource (replaced when the frame changes).
 
 What you get
 ------------
@@ -20,6 +23,7 @@ What you get
 - Web ingest page (ZIP / multi-file → staged under filestore)
 - Proxy video job + Omakase frame-accurate scrubber on the view page
   (in/out points + representative frame → asset metadata)
+- Omakase NLE on video resources (same controls; extracts still from original)
 - ZIP download of member frames (inline or offline job)
 
 
@@ -119,6 +123,17 @@ View page
   fields. If the openai_gpt plugin is active with an image-input field, an
   offline job also regenerates AI caption/tags/etc from that representative
   still (Ollama/Moondream supported).
+
+Video resources
+  The same Omakase controls appear on standard video resources (ffmpeg-
+  supported extensions) when $image_sequence_video_nle is enabled (default).
+  In/out and representative frame are stored in the same metadata fields.
+  Setting a representative frame:
+  - Extracts a full-resolution JPEG from the original video via FFmpeg
+  - Updates the video poster / thumbnails
+  - Saves the still as a replaceable "Representative frame" alternative file
+  - Creates or updates a related Photo resource with that still
+  Toggle under Admin → Plugins → Image Sequence setup.
 
   On create (and when updating the representative frame), the plugin also
   analyses the whole sequence for:

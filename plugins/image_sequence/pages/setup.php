@@ -17,6 +17,7 @@ image_sequence_ensure_setup();
 
 $page_def[] = config_add_single_rtype_select('image_sequence_restype', $lang['image_sequence_restype']);
 $page_def[] = config_add_single_rtype_select('image_sequence_photo_restype', $lang['image_sequence_photo_restype']);
+$page_def[] = config_add_boolean_select('image_sequence_video_nle', $lang['image_sequence_video_nle']);
 $page_def[] = config_add_text_input('image_sequence_fps_default', $lang['image_sequence_fps_default']);
 $page_def[] = config_add_boolean_select('image_sequence_auto_split', $lang['image_sequence_auto_split']);
 $page_def[] = config_add_text_input('image_sequence_min_frames', $lang['image_sequence_min_frames']);

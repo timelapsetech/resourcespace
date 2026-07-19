@@ -13,7 +13,8 @@
 1.9 Search cards show "Sequence" instead of "JSON" for Image Sequence resources
 1.10 Search cards show sequence code as a pill beside status
 1.11 Fix CLI-queued proxy/AI jobs to assign a real user so offline_jobs can run them
-1.11 Representative frame saved as full-res alternative file in filestore (replaced when changed)
+1.11.1 Representative frame saved as full-res alternative file in filestore (replaced when changed)
 1.12 Resolve in-place originals via modifysyncdir + allow secondary scan roots in is_valid_rs_path so ImageMagick/ExifTool previews work for NAS-stored stills
 1.13 Fast representative-frame save: resolve one frame only (no per-frame NAS realpath), skip timeline re-scan, local temp copy for EXIF/alt/poster
 1.14 Large NAS ingest: progress while dating stills; no realpath fallback; timeline from ingest dates (avoid second full ExifTool pass)
+1.15 Omakase NLE on video resources: in/out marks, rep frame → poster + alt file + related Photo

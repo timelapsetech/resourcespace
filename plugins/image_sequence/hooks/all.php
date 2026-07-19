@@ -104,8 +104,16 @@ function HookImage_sequenceAllStaticsync_skip_file(string $shortpath = '', strin
 function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
 {
     $ref = (int) $ref;
-    if ($ref <= 0 || image_sequence_get_data($ref) === null) {
+    if ($ref <= 0) {
         return false;
+    }
+
+    // Sequences and videos that have a representative still (alt / poster).
+    if (image_sequence_get_data($ref) === null) {
+        $resource = get_resource_data($ref);
+        if (!is_array($resource) || !image_sequence_is_video_resource($resource)) {
+            return false;
+        }
     }
 
     $path = image_sequence_get_representative_still_path($ref);

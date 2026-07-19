@@ -3,6 +3,7 @@
 use Montala\ResourceSpace\CommandPlaceholderArg;
 
 include_once __DIR__ . '/cadence_functions.php';
+include_once __DIR__ . '/video_nle_functions.php';
 include_once dirname(__DIR__, 3) . '/include/image_processing.php';
 
 /**
@@ -85,6 +86,9 @@ function image_sequence_ensure_setup(): void
     if (image_sequence_ensure_metadata_tabs()) {
         $changed = true;
     }
+
+    // Attach in/out/rep fields to video resource types for the Omakase NLE.
+    image_sequence_ensure_video_field_types();
 
     if ($changed) {
         set_plugin_config('image_sequence', array_merge(get_plugin_config('image_sequence') ?: [], $config));
@@ -2617,35 +2621,54 @@ function image_sequence_representative_preview_url(int $ref, int $access = -1): 
 
 /**
  * Absolute path to the representative still for AI / metadata use.
- * Prefers a JPEG/PNG still; otherwise falls back to the generated poster preview.
+ * Prefers the managed alternative file, then a JPEG/PNG sequence still,
+ * otherwise falls back to the generated poster preview.
  */
 function image_sequence_get_representative_still_path(int $ref): string
 {
+    // Managed full-res representative alt (sequence or video).
+    $alt_type = image_sequence_representative_alt_type();
+    $alts = ps_query(
+        'SELECT ref, file_extension FROM resource_alt_files WHERE resource = ? AND alt_type = ? ORDER BY ref DESC LIMIT 1',
+        ['i', $ref, 's', $alt_type]
+    );
+    if ($alts !== []) {
+        $ext = strtolower((string) ($alts[0]['file_extension'] ?? 'jpg'));
+        $alt_path = get_resource_path($ref, true, '', false, $ext, -1, 1, false, '', (int) $alts[0]['ref']);
+        if (is_string($alt_path) && is_file($alt_path)) {
+            return $alt_path;
+        }
+    }
+
     $data = image_sequence_get_data($ref);
-    if ($data === null) {
-        return '';
+    if ($data !== null) {
+        $paths = image_sequence_member_absolute_paths($data);
+        if (count($paths) > 0) {
+            $rep_index = image_sequence_clamp_frame_index((int) ($data['representative_frame'] ?? 0), count($paths));
+            $frame_path = $paths[$rep_index];
+            $ext = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
+
+            if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true) && file_exists($frame_path)) {
+                return $frame_path;
+            }
+            if (file_exists($frame_path)) {
+                // Non-browser/AI-friendly originals: prefer poster derived from this frame.
+                $poster = get_resource_path($ref, true, 'pre', false, 'jpg');
+                if (is_string($poster) && $poster !== '' && file_exists($poster)) {
+                    return $poster;
+                }
+
+                return $frame_path;
+            }
+        }
     }
 
-    $paths = image_sequence_member_absolute_paths($data);
-    if (count($paths) === 0) {
-        return '';
-    }
-
-    $rep_index = image_sequence_clamp_frame_index((int) ($data['representative_frame'] ?? 0), count($paths));
-    $frame_path = $paths[$rep_index];
-    $ext = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
-
-    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true) && file_exists($frame_path)) {
-        return $frame_path;
-    }
-
-    // Non-browser/AI-friendly originals: use the poster derived from this frame.
     $poster = get_resource_path($ref, true, 'pre', false, 'jpg');
     if (is_string($poster) && $poster !== '' && file_exists($poster)) {
         return $poster;
     }
 
-    return file_exists($frame_path) ? $frame_path : '';
+    return '';
 }
 
 /**
