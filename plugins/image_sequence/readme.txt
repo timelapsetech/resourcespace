@@ -13,9 +13,11 @@ What you get
 ------------
 
 - Image Sequence resource type + metadata fields (auto-created on activate/setup)
+- View-page metadata tabs: Default (descriptive), Sequence (timing/edit points),
+  Image (camera/EXIF from the representative still)
 - Cadence auto-split: long segments → sequences; short segments → Photos
 - CLI sync over $syncdir (idempotent; skips frames already claimed)
-- Web ingest page (ZIP / multi-file → staged under sync root)
+- Web ingest page (ZIP / multi-file → staged under filestore)
 - Proxy video job + Omakase frame-accurate scrubber on the view page
   (in/out points + representative frame → asset metadata)
 - ZIP download of member frames (inline or offline job)
@@ -61,8 +63,9 @@ Apply the patch before relying on folder sync alongside staticsync.php.
 
 3. In Admin → System → Manage plugins, activate "Image Sequence".
 
-4. Open the plugin setup page once (creates resource type + fields if needed).
-   Confirm $syncdir is set; adjust FPS / cadence thresholds if desired.
+4. Open the plugin setup page once (creates resource type + fields + metadata
+   tabs if needed). Confirm $syncdir is set; adjust FPS / cadence thresholds
+   if desired.
 
 5. Grant the "is" permission (Image Sequence ingest) to non-admin groups that
    should see Team → Ingest Image Sequences. Sysadmins (a) always have access.
@@ -99,6 +102,12 @@ Upload as Image Sequence type
   same way; the placeholder ZIP resource is removed only if ingest succeeds.
 
 View page
+  Metadata is grouped into ResourceSpace tabs:
+  - Default — descriptive fields (title, caption, keywords, AI text, …)
+  - Sequence — frame count, playback/real-time timing, cadence, in/out,
+    representative frame, exposure program, folder path
+  - Image — camera/EXIF from the representative still
+
   Scrub the Omakase proxy player frame-accurately: Mark In / Mark Out, save
   those points to metadata (imgseq_inframe / imgseq_outframe), set a
   representative frame, and download a ZIP of frames.

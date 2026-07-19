@@ -6,7 +6,7 @@ include_once __DIR__ . '/cadence_functions.php';
 include_once dirname(__DIR__, 3) . '/include/image_processing.php';
 
 /**
- * Ensure resource type, metadata fields, and plugin config exist.
+ * Ensure resource type, metadata fields, tabs, and plugin config exist.
  */
 function image_sequence_ensure_setup(): void
 {
@@ -43,12 +43,12 @@ function image_sequence_ensure_setup(): void
 
     $fields = [
         'image_sequence_framecount_field' => ['Frame count', 'imgseq_frames'],
-        'image_sequence_duration_field' => ['Duration', 'imgseq_duration'],
+        'image_sequence_duration_field' => ['Playback duration', 'imgseq_duration'],
         'image_sequence_fps_field' => ['Playback FPS', 'imgseq_fps'],
         'image_sequence_repframe_field' => ['Representative frame', 'imgseq_repframe'],
         'image_sequence_inframe_field' => ['In point (frame)', 'imgseq_inframe'],
         'image_sequence_outframe_field' => ['Out point (frame)', 'imgseq_outframe'],
-        'image_sequence_cadence_field' => ['Detected cadence (s)', 'imgseq_cadence'],
+        'image_sequence_cadence_field' => ['Capture cadence', 'imgseq_cadence'],
         'image_sequence_folder_field' => ['Sequence folder', 'imgseq_folder'],
     ];
 
@@ -78,6 +78,11 @@ function image_sequence_ensure_setup(): void
         $changed = true;
     }
 
+    // Group fields onto Sequence / Image tabs (descriptive stays on Default).
+    if (image_sequence_ensure_metadata_tabs()) {
+        $changed = true;
+    }
+
     if ($changed) {
         set_plugin_config('image_sequence', array_merge(get_plugin_config('image_sequence') ?: [], $config));
     }
@@ -86,7 +91,8 @@ function image_sequence_ensure_setup(): void
 }
 
 /**
- * Create Image Sequence fields for camera/lens/technical still metadata (ExifTool-mapped).
+ * Create Image Sequence fields for camera/lens/technical still metadata (ExifTool-mapped)
+ * and sequence-level timing/exposure analysis fields.
  *
  * @return bool True if any field was created or updated
  */
@@ -96,7 +102,10 @@ function image_sequence_ensure_photo_metadata_fields(int $restype): bool
         return false;
     }
 
-    $defs = image_sequence_photo_metadata_field_defs();
+    $defs = array_merge(
+        image_sequence_image_metadata_field_defs(),
+        image_sequence_sequence_analysis_field_defs()
+    );
     $changed = false;
 
     foreach ($defs as $def) {
@@ -155,6 +164,26 @@ function image_sequence_ensure_photo_metadata_fields(int $restype): bool
         }
     }
 
+    // Frame file size is created on first extract; ensure the field exists for tab assignment.
+    $size_ref = (int) ps_value(
+        'SELECT ref value FROM resource_type_field WHERE name = ?',
+        ['s', 'imgseq_framesize'],
+        0,
+        'schema'
+    );
+    if ($size_ref <= 0) {
+        $size_ref = (int) create_resource_type_field(
+            'Frame file size',
+            $restype,
+            FIELD_TYPE_TEXT_BOX_SINGLE_LINE,
+            'imgseq_framesize',
+            false
+        );
+        if ($size_ref > 0) {
+            $changed = true;
+        }
+    }
+
     if ($changed) {
         clear_query_cache('schema');
     }
@@ -163,11 +192,175 @@ function image_sequence_ensure_photo_metadata_fields(int $restype): bool
 }
 
 /**
- * Representative-still metadata fields (ExifTool tag lists).
+ * Ensure System tabs exist and assign plugin fields for a clear view-page layout:
+ *   Default  — descriptive (title, caption, keywords, AI text, …)
+ *   Sequence — timing, edit points, cadence, folder
+ *   Image    — camera / EXIF from the representative still
+ *
+ * @return bool True if tabs or field assignments changed
+ */
+function image_sequence_ensure_metadata_tabs(): bool
+{
+    $sequence_tab = image_sequence_ensure_tab('Sequence', 20);
+    $image_tab = image_sequence_ensure_tab('Image', 30);
+    if ($sequence_tab <= 0 || $image_tab <= 0) {
+        return false;
+    }
+
+    $layout = image_sequence_metadata_tab_layout($sequence_tab, $image_tab);
+    $changed = false;
+
+    foreach ($layout as $shortname => $meta) {
+        $field_ref = (int) ps_value(
+            'SELECT ref value FROM resource_type_field WHERE name = ?',
+            ['s', $shortname],
+            0,
+            'schema'
+        );
+        if ($field_ref <= 0) {
+            continue;
+        }
+
+        $row = ps_query(
+            'SELECT tab, order_by, title FROM resource_type_field WHERE ref = ?',
+            ['i', $field_ref],
+            'schema'
+        );
+        if ($row === []) {
+            continue;
+        }
+
+        $cur_tab = (int) ($row[0]['tab'] ?? 0);
+        $cur_order = (int) ($row[0]['order_by'] ?? 0);
+        $cur_title = (string) ($row[0]['title'] ?? '');
+        $want_title = (string) ($meta['title'] ?? $cur_title);
+
+        if ($cur_tab === (int) $meta['tab'] && $cur_order === (int) $meta['order_by'] && $cur_title === $want_title) {
+            continue;
+        }
+
+        ps_query(
+            'UPDATE resource_type_field SET tab = ?, order_by = ?, title = ? WHERE ref = ?',
+            ['i', (int) $meta['tab'], 'i', (int) $meta['order_by'], 's', $want_title, 'i', $field_ref]
+        );
+        $changed = true;
+    }
+
+    if ($changed) {
+        clear_query_cache('schema');
+    }
+
+    return $changed;
+}
+
+/**
+ * Get or create a system tab (works from CLI without an admin session).
+ */
+function image_sequence_ensure_tab(string $name, int $order_by): int
+{
+    $name = trim($name);
+    if ($name === '') {
+        return 0;
+    }
+
+    $ref = (int) ps_value(
+        'SELECT ref value FROM tab WHERE name = ?',
+        ['s', $name],
+        0,
+        'schema'
+    );
+    if ($ref > 0) {
+        $current_order = (int) ps_value(
+            'SELECT order_by value FROM tab WHERE ref = ?',
+            ['i', $ref],
+            0,
+            'schema'
+        );
+        if ($current_order !== $order_by) {
+            ps_query('UPDATE tab SET order_by = ? WHERE ref = ?', ['i', $order_by, 'i', $ref]);
+            clear_query_cache('schema');
+        }
+
+        return $ref;
+    }
+
+    ps_query('INSERT INTO tab (`name`, order_by) VALUES (?, ?)', ['s', $name, 'i', $order_by]);
+    $ref = (int) sql_insert_id();
+    clear_query_cache('schema');
+
+    return $ref;
+}
+
+/**
+ * Field shortname → tab + display order for the view/edit metadata panels.
+ *
+ * @return array<string, array{tab: int, order_by: int, title: string}>
+ */
+function image_sequence_metadata_tab_layout(int $sequence_tab, int $image_tab): array
+{
+    // Sequence: structure / timing / edit points (order_by 2100–2290).
+    $sequence = [
+        'imgseq_frames' => ['order_by' => 2100, 'title' => 'Frame count'],
+        'imgseq_fps' => ['order_by' => 2110, 'title' => 'Playback FPS'],
+        'imgseq_duration' => ['order_by' => 2120, 'title' => 'Playback duration'],
+        'imgseq_realdur' => ['order_by' => 2130, 'title' => 'Real-time duration'],
+        'imgseq_interval' => ['order_by' => 2140, 'title' => 'Interval between frames'],
+        'imgseq_cadence' => ['order_by' => 2150, 'title' => 'Capture cadence'],
+        'imgseq_firstcap' => ['order_by' => 2160, 'title' => 'First frame capture time'],
+        'imgseq_lastcap' => ['order_by' => 2170, 'title' => 'Last frame capture time'],
+        'imgseq_inframe' => ['order_by' => 2180, 'title' => 'In point (frame)'],
+        'imgseq_outframe' => ['order_by' => 2190, 'title' => 'Out point (frame)'],
+        'imgseq_repframe' => ['order_by' => 2200, 'title' => 'Representative frame'],
+        'imgseq_expmode' => ['order_by' => 2210, 'title' => 'Exposure program'],
+        'imgseq_framesize' => ['order_by' => 2220, 'title' => 'Frame file size'],
+        'imgseq_folder' => ['order_by' => 2230, 'title' => 'Sequence folder'],
+    ];
+
+    // Image: representative-still camera / technical EXIF (order_by 2300–2490).
+    $image = [
+        'imgseq_captured' => ['order_by' => 2300, 'title' => 'Capture date'],
+        'imgseq_make' => ['order_by' => 2310, 'title' => 'Camera make'],
+        'imgseq_model' => ['order_by' => 2320, 'title' => 'Camera model'],
+        'imgseq_lens' => ['order_by' => 2330, 'title' => 'Lens'],
+        'imgseq_iso' => ['order_by' => 2340, 'title' => 'ISO'],
+        'imgseq_aperture' => ['order_by' => 2350, 'title' => 'Aperture'],
+        'imgseq_shutter' => ['order_by' => 2360, 'title' => 'Shutter speed'],
+        'imgseq_focallen' => ['order_by' => 2370, 'title' => 'Focal length'],
+        'imgseq_focal35' => ['order_by' => 2380, 'title' => 'Focal length (35mm)'],
+        'imgseq_whitebal' => ['order_by' => 2390, 'title' => 'White balance'],
+        'imgseq_flash' => ['order_by' => 2400, 'title' => 'Flash'],
+        'imgseq_pixels' => ['order_by' => 2410, 'title' => 'Pixel dimensions'],
+        'imgseq_bitdepth' => ['order_by' => 2420, 'title' => 'Bit depth'],
+        'imgseq_colorspace' => ['order_by' => 2430, 'title' => 'Color space'],
+        'imgseq_orient' => ['order_by' => 2440, 'title' => 'Orientation'],
+        'imgseq_software' => ['order_by' => 2450, 'title' => 'Software'],
+    ];
+
+    $out = [];
+    foreach ($sequence as $shortname => $meta) {
+        $out[$shortname] = [
+            'tab' => $sequence_tab,
+            'order_by' => $meta['order_by'],
+            'title' => $meta['title'],
+        ];
+    }
+    foreach ($image as $shortname => $meta) {
+        $out[$shortname] = [
+            'tab' => $image_tab,
+            'order_by' => $meta['order_by'],
+            'title' => $meta['title'],
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * Representative-still camera / technical metadata (ExifTool-mapped).
  *
  * @return list<array{title: string, shortname: string, exiftool: string}>
  */
-function image_sequence_photo_metadata_field_defs(): array
+function image_sequence_image_metadata_field_defs(): array
 {
     return [
         ['title' => 'Camera make', 'shortname' => 'imgseq_make', 'exiftool' => 'Make,IFD0:Make'],
@@ -186,13 +379,35 @@ function image_sequence_photo_metadata_field_defs(): array
         ['title' => 'Software', 'shortname' => 'imgseq_software', 'exiftool' => 'Software'],
         ['title' => 'Pixel dimensions', 'shortname' => 'imgseq_pixels', 'exiftool' => 'ImageSize,Composite:ImageSize'],
         ['title' => 'Capture date', 'shortname' => 'imgseq_captured', 'exiftool' => 'DateTimeOriginal,CreateDate'],
-        // Sequence-level timing / exposure (filled by analysis, not per-tag ExifTool map).
+    ];
+}
+
+/**
+ * Sequence-level timing / exposure analysis (not per-tag ExifTool maps).
+ *
+ * @return list<array{title: string, shortname: string, exiftool: string}>
+ */
+function image_sequence_sequence_analysis_field_defs(): array
+{
+    return [
         ['title' => 'First frame capture time', 'shortname' => 'imgseq_firstcap', 'exiftool' => ''],
         ['title' => 'Last frame capture time', 'shortname' => 'imgseq_lastcap', 'exiftool' => ''],
         ['title' => 'Real-time duration', 'shortname' => 'imgseq_realdur', 'exiftool' => ''],
         ['title' => 'Interval between frames', 'shortname' => 'imgseq_interval', 'exiftool' => ''],
         ['title' => 'Exposure program', 'shortname' => 'imgseq_expmode', 'exiftool' => ''],
     ];
+}
+
+/**
+ * @deprecated Use image_sequence_image_metadata_field_defs() + image_sequence_sequence_analysis_field_defs()
+ * @return list<array{title: string, shortname: string, exiftool: string}>
+ */
+function image_sequence_photo_metadata_field_defs(): array
+{
+    return array_merge(
+        image_sequence_image_metadata_field_defs(),
+        image_sequence_sequence_analysis_field_defs()
+    );
 }
 
 /**

@@ -2,6 +2,23 @@
 
 include_once __DIR__ . '/../include/image_sequence_functions.php';
 
+function HookImage_sequenceViewRenderbeforeresourcedetails()
+{
+    global $resource;
+
+    if (!is_array($resource) || !image_sequence_is_sequence_resource($resource)) {
+        return false;
+    }
+
+    // Prefer tab order_by (Default → Sequence → Image) over alphabetical sort.
+    $GLOBALS['sort_tabs'] = false;
+
+    // Keep field order within each tab aligned with our layout.
+    $GLOBALS['use_order_by_tab_view'] = true;
+
+    return false;
+}
+
 function HookImage_sequenceViewRenderinnerresourcepreview()
 {
     global $resource, $ref, $lang, $baseurl, $baseurl_short, $ffmpeg_preview_extension;

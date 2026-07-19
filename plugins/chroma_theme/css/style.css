@@ -674,56 +674,74 @@ a.Primary,
 /* Tabs                                                                       */
 /* -------------------------------------------------------------------------- */
 
-/* Metadata field-group tabs stay as pills */
+/*
+ * Metadata field-group tabs — one attached card (tab strip + panel),
+ * matching Downloads / tools rather than floating pills.
+ */
+#Metadata:has(.TabBar) {
+    gap: 0;
+    background: var(--chroma-surface);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--chroma-radius-lg);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
 #Metadata .TabBar {
     display: flex !important;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    margin: 0 0 4px !important;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
     padding: 0 !important;
     border: none !important;
-    background: transparent !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(0, 0, 0, 0.22) !important;
+    border-radius: 0 !important;
 }
 
 #Metadata .TabBar .Tab,
 #Metadata .TabBar .TabSelected {
-    display: inline-flex !important;
+    display: flex !important;
     float: none !important;
     margin: 0 !important;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 #Metadata .TabBar .Tab a,
 #Metadata .TabBar .TabSelected a {
-    display: inline-flex !important;
+    display: flex !important;
     align-items: center;
     justify-content: center;
     margin: 0 !important;
-    padding: 8px 16px !important;
-    border-radius: 999px !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    background: var(--chroma-surface-2) !important;
+    padding: 13px 18px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    background: transparent !important;
     color: var(--chroma-muted) !important;
     font-size: 12px !important;
     font-weight: 500;
     line-height: 1.2;
+    text-align: center;
     text-transform: none !important;
     letter-spacing: 0.02em;
     text-decoration: none !important;
     box-shadow: none !important;
+    white-space: nowrap;
 }
 
 #Metadata .TabBar .Tab a:hover {
     color: var(--chroma-fg) !important;
-    border-color: rgba(255, 255, 255, 0.22) !important;
-    background: var(--chroma-surface-3) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
 }
 
 #Metadata .TabBar .TabSelected a {
-    background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
-    color: #fff !important;
-    border-color: transparent !important;
+    color: var(--chroma-fg) !important;
+    background: var(--chroma-surface) !important;
+    border-bottom-color: var(--chroma-amber) !important;
 }
 
 /* Downloads / tools — genuine top tabs attached to the card */
@@ -793,8 +811,25 @@ a.Primary,
 }
 
 #Metadata .TabbedPanel {
-    display: block !important;
+    /* Do not force display:block — SelectMetaTab hides inactive panels with
+       display:none, and !important here was stacking Sequence/Image under Default. */
     clear: none !important;
+}
+
+/* Tabbed metadata: panels are panes inside the shared card, not nested cards */
+#Metadata:has(.TabBar) .TabbedPanel {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 20px 24px 22px !important;
+}
+
+/* Keep inactive tab panels hidden even if other rules set display. */
+#Metadata .TabbedPanel[style*="display: none"],
+#Metadata .TabbedPanel[style*="display:none"] {
+    display: none !important;
 }
 
 #Metadata .TabbedPanelInner {
@@ -826,6 +861,12 @@ a.Primary,
 
 #Metadata .TabbedPanel::before {
     content: "Description & Fields";
+}
+
+/* When real field-group tabs exist, the TabBar is the section header. */
+#Metadata:has(.TabBar) .TabbedPanel::before {
+    content: none !important;
+    display: none !important;
 }
 
 /* No fake section title inside downloads — the tabs are the header */

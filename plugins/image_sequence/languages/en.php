@@ -13,12 +13,12 @@ $lang['image_sequence_extensions'] = 'Supported still extensions (comma-separate
 $lang['image_sequence_upload_subdir'] = 'Staging subfolder under filestore for web uploads (not the scan directory)';
 $lang['image_sequence_proxy_max_seconds'] = 'Max proxy duration in seconds (0 = unlimited)';
 $lang['image_sequence_framecount_field'] = 'Frame count metadata field';
-$lang['image_sequence_duration_field'] = 'Duration metadata field';
+$lang['image_sequence_duration_field'] = 'Playback duration metadata field';
 $lang['image_sequence_fps_field'] = 'Playback FPS metadata field';
 $lang['image_sequence_repframe_field'] = 'Representative frame metadata field';
 $lang['image_sequence_inframe_field'] = 'In point (frame) metadata field';
 $lang['image_sequence_outframe_field'] = 'Out point (frame) metadata field';
-$lang['image_sequence_cadence_field'] = 'Detected capture cadence metadata field';
+$lang['image_sequence_cadence_field'] = 'Capture cadence metadata field';
 $lang['image_sequence_folder_field'] = 'Sequence folder metadata field';
 $lang['image_sequence_photo_restype'] = 'Resource type for extras (non-sequence stills)';
 
