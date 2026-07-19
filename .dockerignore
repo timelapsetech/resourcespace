@@ -1,0 +1,32 @@
+.git
+.svn
+.github
+.DS_Store
+**/.DS_Store
+*.log
+*.swp
+*~
+
+# Runtime / host data (bind-mounted at run time)
+filestore
+syncdir
+data
+include/config.php
+.env
+docker/db.env
+docker/config.php
+plugins/image_sequence/config/config.php
+
+# Local tooling / packages not needed in image
+tools
+image_sequence-plugin.zip
+node_modules
+.idea
+.vscode
+
+# Dev-only PHP tooling (composer --no-dev in image)
+phpstan.neon.dist
+phpstan-baseline.neon
+phpcs.xml.dist
+rector.php
+tests

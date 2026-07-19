@@ -4,9 +4,18 @@ update_check.sh
 # Local ResourceSpace config (DB credentials, keys)
 include/config.php
 
+# Machine-specific image_sequence roots (use config.php.example as template)
+plugins/image_sequence/config/config.php
+
+# Docker local overrides
+.env
+docker/db.env
+docker/config.php
+
 # Runtime storage
 filestore/
 syncdir/
+data/
 
 # Composer dependencies (install with: composer install)
 /vendor/

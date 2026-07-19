@@ -1,0 +1,17 @@
+<?php
+
+# Optional local overrides for Image Sequence.
+# Prefer the plugin setup page; only add PHP overrides here when needed.
+# Defaults live in config.default.php.
+#
+# Copy to config.php for machine-specific roots (config.php is gitignored).
+# Inside Docker these paths are bind-mounted from .env (see docker/README.md).
+
+$image_sequence_sync_roots = [
+    '/data/syncdir',
+    '/data/originals',
+];
+
+# One folder = one sequence on ingest (no cadence break splitting).
+# Use “Auto-detect and split shots” on the resource (or the CLI tool) afterward if needed.
+$image_sequence_auto_split = false;

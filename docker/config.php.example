@@ -1,0 +1,90 @@
+<?php
+###############################
+## ResourceSpace
+## Docker / portable configuration
+###############################
+# Copy to docker/config.php (gitignored) before: docker compose up
+# Match MYSQL_* values in docker/db.env
+# Native Mac installs can keep a separate include/config.php; Compose mounts this file only.
+
+# MySQL — service name from docker-compose.yml (not localhost)
+$mysql_server = 'mariadb';
+$mysql_server_port = 3306;
+$mysql_username = 'resourcespace';
+$mysql_password = 'change-me-app';
+$mysql_db = 'resourcespace';
+
+# Read-only DB user (optional). If unused, point at the same account.
+$read_only_db_username = 'resourcespace';
+$read_only_db_password = 'change-me-app';
+
+# Public URL as browsers reach this Mac (change if using LAN IP / HTTPS)
+$baseurl = 'http://localhost:8080';
+
+$email_notify = 'admin@localhost';
+$email_from = 'admin@localhost';
+
+# Generate fresh keys per install, e.g.:
+#   openssl rand -hex 16
+$scramble_key = 'REPLACE_WITH_openssl_rand_hex_16';
+$api_scramble_key = 'REPLACE_WITH_openssl_rand_hex_16';
+$spider_password = 'REPLACE_WITH_SECURE_PASSWORD';
+
+# Utilities are on PATH inside the image — leave unset
+# $imagemagick_path = '/usr/bin';
+# $ffmpeg_path = '/usr/bin';
+# $exiftool_path = '/usr/bin';
+
+# In-container paths (host folders are bind-mounted via .env)
+$syncdir = '/data/syncdir';
+
+# Remote Ollama on the LAN (AI host). Use that machine's IP — not 127.0.0.1.
+$openai_gpt_provider = 'ollama';
+$openai_gpt_provider_override = 'ollama';
+$ollama_endpoint = 'http://192.168.x.x:11434/api/chat'; // AI host LAN IP
+$ollama_model = 'qwen3.5:4b';
+$ollama_model_override = 'qwen3.5:4b';
+$ai_endpoint_connect_timeout = 10;
+$ai_endpoint_timeout = 180;
+$openai_gpt_max_tokens = 80;
+
+# Offline jobs run via container cron (docker/crontab)
+$offline_job_queue = true;
+
+$applicationname = 'ResourceSpace';
+
+# Defaults normally appended from config.new_installs.php
+$imagemagick_colorspace = 'sRGB';
+$contact_link = false;
+$stemming = true;
+$case_insensitive_username = true;
+$user_pref_user_management_notifications = true;
+$use_zip_extension = true;
+$collection_download = true;
+$ffmpeg_preview_force = true;
+$ffmpeg_preview_extension = 'mp4';
+$ffmpeg_preview_options = '-f mp4 -b:v 1200k -b:a 64k -ac 1 -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -c:a aac -strict -2';
+$daterange_search = true;
+$upload_then_edit = true;
+$purge_temp_folder_age = 90;
+$filestore_evenspread = true;
+$comments_resource_enable = true;
+$api_upload_urls = [];
+$use_native_input_for_date_field = true;
+$resource_view_use_pre = true;
+$sort_tabs = false;
+$maxyear_extends_current = 5;
+$thumbs_display_archive_state = true;
+$file_checksums = true;
+$hide_real_filepath = true;
+$annotate_enabled = true;
+$plugins[] = 'brand_guidelines';
+$plugins[] = 'chroma_theme';
+$plugins[] = 'aria_home';
+$plugins[] = 'asset_rating';
+
+$orderbyrating = true;
+$default_display = 'xlthumbs';
+$user_pref_appearance = 'dark';
+$home_dash = false;
+$no_welcometext = true;

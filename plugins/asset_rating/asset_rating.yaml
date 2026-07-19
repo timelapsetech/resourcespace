@@ -1,6 +1,6 @@
 name: asset_rating
 title: Asset Rating
-author: Timelapse Tech
+author: Time Lapse Technologies
 version: 1.0
 desc: Curated 0–5 star rating for assets (shared across users). Syncs to resource.rating for sorting.
 icon: star

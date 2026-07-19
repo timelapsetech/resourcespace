@@ -157,4 +157,7 @@ Notes
   the still files on disk. Scan roots are never written to or cleaned up.
 - Do not ship local include/config.php, filestore/, syncdir/, or vendor/ with
   this plugin.
+- For Docker deploy on a Mac (NAS + external-drive filestore), see
+  docker/README.md at the repo root. Container sync roots are /data/syncdir
+  and /data/originals (see config/config.php.example).
 - Unit test: tests/test_list/001590_image_sequence_cadence.php

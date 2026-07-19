@@ -1,0 +1,45 @@
+services:
+  resourcespace:
+    build: .
+    container_name: resourcespace
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "${RS_HTTP_PORT:-8080}:80"
+    env_file:
+      - docker/db.env
+    environment:
+      OLLAMA_ENDPOINT: ${OLLAMA_ENDPOINT:-}
+    volumes:
+      - ${FILESTORE_HOST_PATH}:/var/www/html/filestore
+      - ${ORIGINALS_HOST_PATH}:/data/originals:ro
+      - ${SYNCDIR_HOST_PATH}:/data/syncdir
+      - ./docker/config.php:/var/www/html/include/config.php
+    networks:
+      - frontend
+      - backend
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: resourcespace-mariadb
+    restart: unless-stopped
+    env_file:
+      - docker/db.env
+    volumes:
+      - ${MYSQL_DATA_HOST_PATH:-mariadb_data}:/var/lib/mysql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  mariadb_data:

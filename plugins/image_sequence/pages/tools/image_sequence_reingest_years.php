@@ -39,13 +39,16 @@ if ($years === []) {
 $roots = image_sequence_scan_roots();
 $originals_root = null;
 foreach ($roots as $root) {
-    if (strpos($root, 'Time Lapse/Originals') !== false || basename($root) === 'Originals') {
-        $originals_root = rtrim(str_replace('\\', '/', $root), '/');
+    $root = rtrim(str_replace('\\', '/', (string) $root), '/');
+    // Prefer a scan root whose basename is "Originals", else the last configured root.
+    if (basename($root) === 'Originals') {
+        $originals_root = $root;
         break;
     }
+    $originals_root = $root;
 }
 if ($originals_root === null || !is_dir($originals_root)) {
-    echo "Could not find Time Lapse/Originals scan root.\n";
+    echo "Could not find an originals scan root under \$image_sequence_sync_roots / \$syncdir.\n";
     exit(1);
 }
 
