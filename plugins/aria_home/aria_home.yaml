@@ -1,0 +1,11 @@
+name: aria_home
+title: Aria Home
+author: Timelapse Tech
+version: 1.0
+desc: Cinematic Aria-style home with curated featured tags, multi-section sidebar facets, and an image-forward asset grid.
+icon: layout-dashboard
+icon-colour: mediumorchid
+category: User interface
+disable_group_select: 1
+default_priority: 60
+config_url: /plugins/aria_home/pages/setup.php

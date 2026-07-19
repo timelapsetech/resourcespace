@@ -26,7 +26,9 @@
 
     function enhanceGallery(root) {
         var scope = root || document;
-        var cards = scope.querySelectorAll("#CentralSpaceResources > .resource-card");
+        var cards = scope.querySelectorAll(
+            "#CentralSpaceResources > .resource-card, #aria-grid > .resource-card"
+        );
         if (!cards.length) {
             return;
         }

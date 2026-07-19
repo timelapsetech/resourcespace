@@ -162,6 +162,11 @@ input[type="button"],
     border-radius: 999px !important;
 }
 
+/* Aria home controls opt out of the global pill hammer where needed */
+.aria-home .aria-facet-row {
+    border-radius: 10px !important;
+}
+
 button.Primary,
 input.Primary,
 a.Primary,

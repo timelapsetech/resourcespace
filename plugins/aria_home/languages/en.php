@@ -1,0 +1,35 @@
+<?php
+
+$lang['plugin-aria_home-title'] = 'Aria Home';
+$lang['plugin-aria_home-desc'] = 'Cinematic library home with featured hero, filters, and facets.';
+$lang['aria_home_featured_field'] = 'Featured on home';
+$lang['aria_home_featured_yes'] = 'Yes';
+$lang['aria_home_setup'] = 'Aria Home setup';
+$lang['aria_home_setup_intro'] = 'Mark resources with the “Featured on home” metadata field to promote them in the hero. Curate top-bar tags and left sidebar facets below.';
+$lang['aria_home_setup_tip'] = 'Tip: mark resources with “Featured on home” for the hero. Tag assets with Country, State, City, Other keywords, Subject, Event, Landmark, or People so those sidebar sections fill in.';
+$lang['aria_home_open_asset'] = 'Open asset';
+$lang['aria_home_add_collection'] = 'Add to collection';
+$lang['aria_home_featured'] = 'Featured';
+$lang['aria_home_library'] = 'Library';
+$lang['aria_home_all'] = 'All';
+$lang['aria_home_image'] = 'Image';
+$lang['aria_home_video'] = 'Video';
+$lang['aria_home_collections'] = 'Collections';
+$lang['aria_home_tags'] = 'Tags';
+$lang['aria_home_featured_tags'] = 'Featured tags';
+$lang['aria_home_featured_tags_help'] = 'Pick which keywords appear as pills across the top of the home page. Leave empty to show the first tags from the source field.';
+$lang['aria_home_featured_tags_field'] = 'Tag source field';
+$lang['aria_home_featured_tags_pick'] = 'Show these tags';
+$lang['aria_home_no_featured_tags'] = 'Curate featured tags in plugin setup';
+$lang['aria_home_no_tag_choices'] = 'No keywords found on this field yet.';
+$lang['aria_home_facet_sections'] = 'Left sidebar facets';
+$lang['aria_home_facet_sections_help'] = 'Enable sections and map each to a metadata field. Country, State, City, and Other use controlled keyword lists. Large lists only show values currently used on resources.';
+$lang['aria_home_facet_enabled'] = 'On';
+$lang['aria_home_facet_label'] = 'Label';
+$lang['aria_home_facet_field'] = 'Field';
+$lang['aria_home_facet_limit'] = 'Limit';
+$lang['aria_home_facet_empty'] = 'No values in use yet.';
+$lang['aria_home_no_collections'] = 'Create a collection to filter here.';
+$lang['aria_home_assets'] = 'assets';
+$lang['aria_home_no_results'] = 'No assets match these filters.';
+$lang['aria_home_browse_library'] = 'Browse library';

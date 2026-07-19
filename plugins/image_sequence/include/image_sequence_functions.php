@@ -2503,6 +2503,7 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
     }
 
     $thumb_specs = [
+        'scr' => '1280x1280',
         'thm' => '250x250',
         'col' => '100x100',
         'tiny' => '75x75',
@@ -2528,8 +2529,9 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
         @copy($poster_jpg, $dest);
     }
 
+    // Bump file_modified so download cache-busting picks up the new posters.
     ps_query(
-        "UPDATE resource SET has_image = 1, preview_extension = 'jpg' WHERE ref = ?",
+        "UPDATE resource SET has_image = 1, preview_extension = 'jpg', file_modified = NOW() WHERE ref = ?",
         ['i', $ref]
     );
 }
@@ -2550,6 +2552,67 @@ function image_sequence_clamp_frame_index(int $frame_index, int $path_count): in
     }
 
     return $frame_index;
+}
+
+/**
+ * Alternative file ref for the managed representative still, if present.
+ */
+function image_sequence_get_representative_alt_ref(int $ref): int
+{
+    if ($ref <= 0) {
+        return 0;
+    }
+
+    return (int) ps_value(
+        'SELECT ref value FROM resource_alt_files WHERE resource = ? AND alt_type = ? ORDER BY ref DESC LIMIT 1',
+        ['i', $ref, 's', image_sequence_representative_alt_type()],
+        0
+    );
+}
+
+/**
+ * Public preview URL for an image-sequence resource, preferring the representative frame.
+ * Uses regenerated JPEG posters (pre/thm/scr) — never the video proxy first frame.
+ */
+function image_sequence_representative_preview_url(int $ref, int $access = -1): string
+{
+    if ($ref <= 0 || image_sequence_get_data($ref) === null) {
+        return '';
+    }
+
+    $resource = get_resource_data($ref);
+    if (!is_array($resource)) {
+        return '';
+    }
+
+    // Ensure preview lookups use JPEG posters, not the mp4 proxy beside them.
+    $resource['preview_extension'] = 'jpg';
+
+    if ($access < 0) {
+        $access = (int) get_resource_access($resource);
+    }
+
+    // Prefer posters refreshed from the representative still (avoid stale first-frame scr alone).
+    $preview = get_resource_preview($resource, ['pre', 'thm', 'scr'], $access, false);
+    if (is_array($preview) && !empty($preview['url'])) {
+        return (string) $preview['url'];
+    }
+
+    // Fall back to the full-res representative alternative file.
+    $alt = image_sequence_get_representative_alt_ref($ref);
+    if ($alt > 0) {
+        $alt_row = get_alternative_file($ref, $alt);
+        $ext = is_array($alt_row) ? strtolower((string) ($alt_row['file_extension'] ?? 'jpg')) : 'jpg';
+        if ($ext === '') {
+            $ext = 'jpg';
+        }
+        $path = get_resource_path($ref, true, '', false, $ext, true, 1, false, '', $alt);
+        if (is_string($path) && is_file($path)) {
+            return (string) get_resource_path($ref, false, '', false, $ext, true, 1, false, '', $alt);
+        }
+    }
+
+    return '';
 }
 
 /**
