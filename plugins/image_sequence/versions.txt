@@ -11,3 +11,4 @@
 1.7 View metadata tabs: Default (descriptive), Sequence (timing/edit points), Image (camera/EXIF)
 1.8 On ingest, write folder name, full folder path, and sequence code (name before first space/dash/underscore) to metadata
 1.9 Search cards show "Sequence" instead of "JSON" for Image Sequence resources
+1.10 Search cards show sequence code as a pill beside status

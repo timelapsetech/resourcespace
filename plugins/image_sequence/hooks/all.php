@@ -88,6 +88,22 @@ function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
 }
 
 /**
+ * Include sequence code in search result joins so cards can show it without extra queries.
+ *
+ * @return list<int>|false
+ */
+function HookImage_sequenceAllAdditionaljoins()
+{
+    global $image_sequence_seqcode_field;
+
+    if ((int) $image_sequence_seqcode_field > 0) {
+        return [(int) $image_sequence_seqcode_field];
+    }
+
+    return false;
+}
+
+/**
  * Search / collection cards: show "Sequence" instead of the stored JSON extension.
  *
  * @param array $resource Search-result row
@@ -103,6 +119,34 @@ function HookImage_sequenceAllResourcecard_filetype_label($resource = [])
     }
 
     return (string) ($lang['image_sequence_card_filetype'] ?? 'Sequence');
+}
+
+/**
+ * Search cards: sequence-code pill beside status / ID.
+ *
+ * @param array $resource Search-result row
+ */
+function HookImage_sequenceAllResourcecard_pills($resource = [])
+{
+    global $lang;
+
+    if (!is_array($resource)) {
+        return false;
+    }
+
+    $code = image_sequence_get_card_sequence_code($resource);
+    if ($code === '') {
+        return false;
+    }
+
+    $title = (string) ($lang['image_sequence_card_seqcode_title'] ?? 'Sequence code');
+    ?>
+    <div class="resource-card-pill resource-card-seqcode" title="<?php echo escape($title); ?>">
+        <span><?php echo escape($code); ?></span>
+    </div>
+    <?php
+
+    return false;
 }
 
 /**

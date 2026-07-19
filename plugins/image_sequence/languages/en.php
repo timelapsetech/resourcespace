@@ -67,6 +67,7 @@ $lang['image_sequence_download_zip'] = 'Download sequence as ZIP';
 $lang['image_sequence_download_queued'] = 'Sequence ZIP download has been queued. You will be notified when it is ready.';
 $lang['image_sequence_no_data'] = 'No image sequence data found for this resource.';
 $lang['image_sequence_card_filetype'] = 'Sequence';
+$lang['image_sequence_card_seqcode_title'] = 'Sequence code';
 $lang['image_sequence_section'] = 'Image sequence';
 
 $lang['resourcetype-image-sequence'] = 'Image Sequence';

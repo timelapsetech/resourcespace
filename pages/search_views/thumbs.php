@@ -256,7 +256,9 @@ if ($use_selection_collection && in_array($ref, $selection_collection_resources)
                         <?php
                     }
                     
-                } ?>
+                }
+                hook('resourcecard_pills', '', [$result[$n]]);
+                ?>
             </div>
             <div class="resource-card-type-bar">
                 <?php

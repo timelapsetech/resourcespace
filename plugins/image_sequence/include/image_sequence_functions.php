@@ -1041,6 +1041,35 @@ function image_sequence_is_sequence_resource(array $resource): bool
 }
 
 /**
+ * Sequence code for search/collection cards (from joined field or live lookup).
+ */
+function image_sequence_get_card_sequence_code(array $resource): string
+{
+    global $image_sequence_seqcode_field;
+
+    if (!image_sequence_is_sequence_resource($resource)) {
+        return '';
+    }
+
+    $field = (int) $image_sequence_seqcode_field;
+    if ($field <= 0) {
+        return '';
+    }
+
+    $key = 'field' . $field;
+    if (isset($resource[$key]) && trim((string) $resource[$key]) !== '') {
+        return trim((string) $resource[$key]);
+    }
+
+    $ref = (int) ($resource['ref'] ?? 0);
+    if ($ref <= 0) {
+        return '';
+    }
+
+    return trim((string) get_data_by_field($ref, $field));
+}
+
+/**
  * Team tools / web ingest access: sysadmins or groups granted the "is" permission.
  */
 function image_sequence_can_access_tools(): bool

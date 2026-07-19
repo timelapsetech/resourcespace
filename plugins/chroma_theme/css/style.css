@@ -318,6 +318,17 @@ a.Primary,
     letter-spacing: 0.08em;
 }
 
+.resource-card-pill.resource-card-seqcode {
+    font-family: var(--chroma-font-mono) !important;
+    font-size: 11px !important;
+    font-weight: 500;
+    letter-spacing: 0.05em !important;
+    text-transform: none !important;
+    color: var(--chroma-amber) !important;
+    background: rgba(232, 184, 74, 0.14) !important;
+    border: 1px solid rgba(232, 184, 74, 0.35);
+}
+
 .resource-card-type {
     color: var(--chroma-muted) !important;
     font-size: 11px !important;
