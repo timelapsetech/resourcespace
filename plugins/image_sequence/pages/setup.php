@@ -42,17 +42,16 @@ $page_def[] = config_add_single_ftype_select('image_sequence_folderpath_field', 
 
 config_gen_setup_post($page_def, $plugin_name);
 
-// Normalize extensions from comma-separated setup field if posted as string.
+// Keep extensions as a comma-separated string in plugin config (text input).
+// Runtime code accepts string or array via image_sequence_supported_extensions().
 $cfg = get_plugin_config($plugin_name) ?: [];
-if (isset($cfg['image_sequence_extensions']) && is_string($cfg['image_sequence_extensions'])) {
-    $exts = array_values(array_filter(array_map(static function ($e) {
-        return strtolower(trim($e));
-    }, explode(',', $cfg['image_sequence_extensions']))));
-    if ($exts !== []) {
-        $cfg['image_sequence_extensions'] = $exts;
-        set_plugin_config($plugin_name, $cfg);
-        $image_sequence_extensions = $exts;
-    }
+if (isset($cfg['image_sequence_extensions']) && is_array($cfg['image_sequence_extensions'])) {
+    $cfg['image_sequence_extensions'] = implode(',', array_map('strval', $cfg['image_sequence_extensions']));
+    set_plugin_config($plugin_name, $cfg);
+}
+if (isset($GLOBALS['image_sequence_extensions']) && is_array($GLOBALS['image_sequence_extensions'])) {
+    $GLOBALS['image_sequence_extensions'] = implode(',', $GLOBALS['image_sequence_extensions']);
+    $image_sequence_extensions = $GLOBALS['image_sequence_extensions'];
 }
 
 include "../../../include/header.php";
