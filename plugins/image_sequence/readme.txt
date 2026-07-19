@@ -6,8 +6,10 @@ Frames stay on disk under $syncdir (or configured sync roots) — they are not
 copied into filestore, and that scan tree is treated as read-only (no manifests
 or staging writes there). Manifests and proxy/poster files go to filestore; web
 uploads stage under $storagedir. The plugin builds an FFmpeg proxy video for
-preview, supports picking a representative frame (EXIF into metadata), and
-auto-splits large still folders using capture-time cadence (Ingestr-style).
+preview and supports picking a representative frame (EXIF into metadata).
+Each still folder is ingested as one continuous sequence (EXIF first/last +
+cadence samples only — never filesystem mtime). Shot breaks can be detected
+and split later via “Auto-detect and split shots” on the resource view (or CLI).
 The same Omakase player also works on standard video resources: in/out marks,
 representative frame → poster, full-res still as an alternative file, and a
 related Photo resource (replaced when the frame changes).
@@ -18,7 +20,7 @@ What you get
 - Image Sequence resource type + metadata fields (auto-created on activate/setup)
 - View-page metadata tabs: Default (descriptive), Sequence (timing/edit points),
   Image (camera/EXIF from the representative still)
-- Cadence auto-split: long segments → sequences; short segments → Photos
+- One folder = one sequence on ingest; optional later cadence shot-split
 - CLI sync over $syncdir (idempotent; skips frames already claimed)
 - Web ingest page (ZIP / multi-file → staged under filestore)
 - Proxy video job + Omakase frame-accurate scrubber on the view page
@@ -136,13 +138,12 @@ Video resources
   - Creates or updates a related Photo resource with that still
   Toggle under Admin → Plugins → Image Sequence setup.
 
-  On create (and when updating the representative frame), the plugin also
-  analyses the whole sequence for:
-  - First / last frame capture times (from EXIF DateTimeOriginal)
+  On create, the plugin analyses the sequence with sparse EXIF reads:
+  - First / last frame capture times (DateTimeOriginal on endpoints only)
   - Real-time duration (last − first capture)
-  - Interval between frames (median cadence)
-  - Exposure program (manual / aperture priority / shutter priority / etc.)
-    plus whether aperture, shutter, and ISO were fixed or varied
+  - Interval between frames (median cadence from sampled consecutive pairs)
+  - Exposure program (sampled frames)
+  Full-folder EXIF dating is used only by “Auto-detect and split shots”.
 
 Offline jobs
   Admin → Manage jobs → Image Sequence → Rebuild pending/failed sequence proxies.

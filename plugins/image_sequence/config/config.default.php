@@ -16,8 +16,9 @@ $image_sequence_sync_roots = [];
 # Staging subfolder under filestore ($storagedir) for web ZIP/multi-file uploads (writable).
 $image_sequence_upload_subdir = 'image_sequences';
 
-# Cadence auto-split (ported from Ingestr).
-$image_sequence_auto_split = true;
+# Cadence settings (used for sampled interval on ingest, and for manual shot-split).
+# Ingest does NOT auto-split by default — one folder = one continuous sequence.
+$image_sequence_auto_split = false;
 $image_sequence_min_frames = 10;
 $image_sequence_min_files_for_cadence = 3;
 $image_sequence_max_cadence_sample = 180;
@@ -53,10 +54,6 @@ $image_sequence_video_nle = true;
 
 # Optional: limit video NLE metadata fields to these resource type IDs (empty = auto-detect Video types).
 $image_sequence_video_restypes = [];
-
-# When true, folder ingest uses filesystem mtime instead of ExifTool DateTimeOriginal.
-# Much faster on NAS/SMB; cadence split still works from mtime gaps.
-$image_sequence_fast_ingest = false;
 
 # Protect field configs from accidental deletion when plugin is active.
 $image_sequence_fieldvars = [

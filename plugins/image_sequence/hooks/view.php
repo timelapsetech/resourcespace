@@ -150,12 +150,22 @@ function HookImage_sequenceViewAfterresourceed()
     $zip_url = generateURL($baseurl_short . 'plugins/image_sequence/pages/download_zip.php', [
         'ref' => (int) $ref,
     ]);
+    $split_url = generateURL($baseurl_short . 'plugins/image_sequence/pages/split_shots.php', [
+        'ref' => (int) $ref,
+    ]);
     ?>
     <li>
         <a href="<?php echo escape($zip_url); ?>" onclick="return CentralSpaceLoad(this, true);">
             <?php echo escape($lang['image_sequence_download_zip']); ?>
         </a>
     </li>
+    <?php if (get_edit_access((int) $ref)) { ?>
+    <li>
+        <a href="<?php echo escape($split_url); ?>" onclick="return CentralSpaceLoad(this, true);">
+            <?php echo escape($lang['image_sequence_split_shots_title'] ?? 'Auto-detect and split shots'); ?>
+        </a>
+    </li>
+    <?php } ?>
     <?php
     return false;
 }
