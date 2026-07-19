@@ -1,0 +1,10 @@
+name: asset_rating
+title: Asset Rating
+author: Timelapse Tech
+version: 1.0
+desc: Curated 0–5 star rating for assets (shared across users). Syncs to resource.rating for sorting.
+icon: star
+icon-colour: goldenrod
+category: User interface
+disable_group_select: 1
+default_priority: 55

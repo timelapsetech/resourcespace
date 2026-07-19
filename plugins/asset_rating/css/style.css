@@ -1,0 +1,139 @@
+/**
+ * Curated asset rating — star control + card pill
+ */
+
+.asset-rating-view-wrap {
+    position: relative;
+    z-index: 4;
+    padding: 12px 24px 8px;
+    clear: both;
+}
+
+.asset-rating-view-wrap.is-placed {
+    /* Anchored directly under #previewimagewrapper */
+    margin: 0;
+}
+
+.asset-rating {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(28, 27, 36, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.asset-rating-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--chroma-muted, #a8a6b5);
+}
+
+.asset-rating-stars {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.asset-rating-star {
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 0 2px;
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.22);
+    cursor: default;
+    transition: color 0.12s ease, transform 0.12s ease;
+    min-height: 0 !important;
+    box-shadow: none !important;
+}
+
+button.asset-rating-star {
+    cursor: pointer;
+}
+
+button.asset-rating-star:hover,
+button.asset-rating-star:focus-visible,
+.asset-rating.is-hovering button.asset-rating-star.is-preview {
+    color: #e8b84a;
+    transform: scale(1.08);
+}
+
+.asset-rating-star.is-active {
+    color: #e8b84a;
+}
+
+.asset-rating-value {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--chroma-fg, #f5f4f8);
+    min-width: 2.5rem;
+}
+
+.asset-rating-clear {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--chroma-muted, #a8a6b5);
+    border-radius: 999px !important;
+    width: 28px;
+    height: 28px;
+    padding: 0 !important;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    min-height: 0 !important;
+    box-shadow: none !important;
+}
+
+.asset-rating-clear:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.asset-rating-help {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: var(--chroma-muted, #a8a6b5);
+    opacity: 0.85;
+}
+
+.asset-rating.is-saving {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.asset-rating.is-error {
+    border-color: rgba(220, 80, 80, 0.55);
+}
+
+/* Search / home card pill */
+.resource-card-pill.resource-card-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(232, 184, 74, 0.16) !important;
+    border-color: rgba(232, 184, 74, 0.35) !important;
+    color: #e8b84a !important;
+}
+
+.asset-rating-pill-stars {
+    letter-spacing: -0.05em;
+    font-size: 11px;
+}
+
+.asset-rating-pill-num {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+@media (max-width: 700px) {
+    .asset-rating-view-wrap {
+        padding: 10px 16px 0;
+    }
+}
