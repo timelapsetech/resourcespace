@@ -1906,19 +1906,49 @@ function image_sequence_member_absolute_paths(array $sequence_data): array
 
 function image_sequence_queue_proxy_job(int $ref): void
 {
-    global $lang, $offline_job_queue;
+    global $lang, $offline_job_queue, $userref;
 
     $job_data = ['resource' => $ref];
-    $success = $lang['image_sequence_rep_frame_set'] ?? 'Image sequence proxy ready';
+    $success = $lang['image_sequence_proxy_ready'] ?? ($lang['image_sequence_rep_frame_set'] ?? 'Image sequence proxy ready');
     $failure = $lang['image_sequence_proxy_failed'] ?? 'Image sequence proxy failed';
 
     if (!empty($offline_job_queue)) {
-        job_queue_add('create_image_sequence_proxy', $job_data, '', '', $success, $failure, 'imgseq_proxy_' . $ref);
+        // Offline jobs require a real user; CLI sync often has none.
+        $job_user = (int) ($userref ?? 0);
+        if ($job_user <= 0) {
+            $job_user = image_sequence_default_job_user();
+        }
+        job_queue_add(
+            'create_image_sequence_proxy',
+            $job_data,
+            (string) $job_user,
+            '',
+            $success,
+            $failure,
+            'imgseq_proxy_' . $ref
+        );
         return;
     }
 
     // Run inline when offline jobs are disabled.
     image_sequence_generate_proxy($ref);
+}
+
+/**
+ * Fallback user for CLI-queued offline jobs (admin / first system user).
+ */
+function image_sequence_default_job_user(): int
+{
+    $admin = (int) ps_value(
+        'SELECT ref value FROM user WHERE username = ? OR usergroup = 3 ORDER BY ref ASC LIMIT 1',
+        ['s', 'admin'],
+        0
+    );
+    if ($admin > 0) {
+        return $admin;
+    }
+
+    return (int) ps_value('SELECT MIN(ref) value FROM user', [], 1);
 }
 
 /**
@@ -2340,7 +2370,7 @@ function image_sequence_process_ai_metadata(int $ref, bool $force_overwrite = fa
  */
 function image_sequence_queue_ai_metadata(int $ref, bool $force_overwrite = false): void
 {
-    global $lang;
+    global $lang, $userref;
 
     if (!function_exists('job_queue_add')) {
         image_sequence_process_ai_metadata($ref, $force_overwrite);
@@ -2349,11 +2379,15 @@ function image_sequence_queue_ai_metadata(int $ref, bool $force_overwrite = fals
 
     $success = $lang['image_sequence_ai_done'] ?? 'AI metadata generated from representative frame';
     $failure = $lang['image_sequence_ai_failed'] ?? 'AI metadata generation failed';
+    $job_user = (int) ($userref ?? 0);
+    if ($job_user <= 0) {
+        $job_user = image_sequence_default_job_user();
+    }
     // job_code dedupes pending jobs for the same resource.
     job_queue_add(
         'image_sequence_ai_metadata',
         ['ref' => $ref, 'force_overwrite' => $force_overwrite],
-        '',
+        (string) $job_user,
         '',
         $success,
         $failure,

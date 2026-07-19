@@ -25,6 +25,7 @@ $lang['image_sequence_seqcode_field'] = 'Sequence code metadata field (folder na
 $lang['image_sequence_photo_restype'] = 'Resource type for extras (non-sequence stills)';
 
 $lang['image_sequence_generating_preview'] = 'Generating sequence preview…';
+$lang['image_sequence_proxy_ready'] = 'Image sequence proxy ready';
 $lang['image_sequence_proxy_failed'] = 'Sequence preview generation failed.';
 $lang['image_sequence_use_rep_frame'] = 'Use as representative frame';
 $lang['image_sequence_rep_frame_set'] = 'Representative frame updated (full-res file saved, metadata extracted). AI captions queued.';
