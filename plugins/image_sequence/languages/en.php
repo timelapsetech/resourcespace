@@ -19,6 +19,7 @@ $lang['image_sequence_split_shots_detecting'] = 'Reading EXIF capture times to d
 $lang['image_sequence_split_shots_applying'] = 'Splitting sequence…';
 $lang['image_sequence_split_shots_confirm'] = 'Split this sequence into the detected shots? The first shot stays on this resource; additional shots become new Image Sequence resources.';
 $lang['image_sequence_upload_subdir'] = 'Staging subfolder under filestore for web uploads (not the scan directory)';
+$lang['image_sequence_proxy_max_width'] = 'Proxy max width in pixels (default 1280; height follows source aspect, no letterboxing)';
 $lang['image_sequence_proxy_max_seconds'] = 'Max proxy duration in seconds (0 = unlimited)';
 $lang['image_sequence_framecount_field'] = 'Frame count metadata field';
 $lang['image_sequence_duration_field'] = 'Playback duration metadata field';

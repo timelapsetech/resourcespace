@@ -2918,9 +2918,8 @@ function image_sequence_default_job_user(): int
  */
 function image_sequence_generate_proxy(int $ref): bool
 {
-    global $ffmpeg_preview_extension, $ffmpeg_preview_options, $ffmpeg_preview_max_width,
-        $ffmpeg_preview_max_height, $image_sequence_proxy_max_width, $image_sequence_proxy_max_height,
-        $image_sequence_proxy_max_seconds, $image_sequence_proxy_options;
+    global $ffmpeg_preview_extension, $ffmpeg_preview_options,
+        $image_sequence_proxy_max_width, $image_sequence_proxy_max_seconds, $image_sequence_proxy_options;
 
     $data = image_sequence_get_data($ref);
     if ($data === null) {
@@ -2949,15 +2948,22 @@ function image_sequence_generate_proxy(int $ref): bool
     $ok = false;
     $has_poster = false;
 
-    $width = (int) ($image_sequence_proxy_max_width ?: $ffmpeg_preview_max_width ?: 1280);
-    $height = (int) ($image_sequence_proxy_max_height ?: $ffmpeg_preview_max_height ?: 720);
+    $width = (int) ($image_sequence_proxy_max_width ?: 1280);
+    if ($width < 2) {
+        $width = 1280;
+    }
+    // Even width for yuv420p / libx264.
+    $width -= ($width % 2);
+
     $encode_opts = trim((string) ($image_sequence_proxy_options !== '' ? $image_sequence_proxy_options : $ffmpeg_preview_options));
     if ($encode_opts === '') {
         $encode_opts = '-f mp4 -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -an';
     }
 
     $duration_limit = (int) $image_sequence_proxy_max_seconds;
-    $scale = "scale={$width}:{$height}:force_original_aspect_ratio=decrease,pad={$width}:{$height}:(ow-iw)/2:(oh-ih)/2,setsar=1";
+    // Fit inside max width; keep source aspect ratio (no crop, no letter/pillar box).
+    // Height -2 = auto, even. min(W,iw) avoids upscaling smaller stills.
+    $scale = "scale='trunc(min({$width}\\,iw)/2)*2':-2,setsar=1";
 
     try {
         $pattern = (string) ($data['frame_pattern'] ?? '');

@@ -28,9 +28,9 @@ $image_sequence_minimum_adaptive_gap = 180;
 # Supported still extensions (comma-separated string in plugin config; normalized to array on load).
 $image_sequence_extensions = 'jpg,jpeg,png,tif,tiff,heic,gif,raw,cr2,crw,nef,arw,dng,exr,dpx';
 
-# Proxy encode settings (fall back to core $ffmpeg_preview_* when empty).
-$image_sequence_proxy_max_width = 0;
-$image_sequence_proxy_max_height = 0;
+# Proxy encode: max width (0 = 1280). Height follows source aspect — no pad/crop.
+$image_sequence_proxy_max_width = 1280;
+$image_sequence_proxy_max_height = 0; // unused (kept for older configs); proxies are width-limited only
 $image_sequence_proxy_max_seconds = 0;
 $image_sequence_proxy_options = '';
 
