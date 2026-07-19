@@ -245,7 +245,7 @@ a.Primary,
 .resource-card-image.xl {
     width: 100% !important;
     height: auto !important;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 1 / 1;
     display: block !important;
     position: relative;
     overflow: hidden;
