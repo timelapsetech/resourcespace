@@ -57,7 +57,10 @@ if ($target !== '') {
             echo "  {$entry} ... ";
             flush();
             $batch = image_sequence_ingest_folder($path, [
-                'recursive' => true,
+                // Shoot folders are flat still directories; scandir is far more reliable on SMB
+                // than RecursiveDirectoryIterator (which also previously duplicated entries).
+                'recursive' => false,
+                'auto_split' => false,
                 'source_root' => $path,
             ]);
             echo 'sequences=' . count($batch['sequences']) . ' photos=' . count($batch['photos']) . "\n";
@@ -69,6 +72,7 @@ if ($target !== '') {
             flush();
             $batch = image_sequence_ingest_folder($target, [
                 'recursive' => false,
+                'auto_split' => false,
                 'source_root' => $target,
             ]);
             echo 'sequences=' . count($batch['sequences']) . ' photos=' . count($batch['photos']) . "\n";
@@ -79,7 +83,8 @@ if ($target !== '') {
         echo "Scanning {$target}\n";
         flush();
         $batch = image_sequence_ingest_folder($target, [
-            'recursive' => true,
+            'recursive' => false,
+            'auto_split' => false,
             'source_root' => $target,
         ]);
         $results['sequences'] = array_merge($results['sequences'], $batch['sequences']);
@@ -101,7 +106,8 @@ if ($target !== '') {
             }
             if (is_dir($path)) {
                 $batch = image_sequence_ingest_folder($path, [
-                    'recursive' => true,
+                    'recursive' => false,
+                    'auto_split' => false,
                     'source_root' => $path,
                 ]);
                 $new_count = count($batch['sequences']);
@@ -113,6 +119,7 @@ if ($target !== '') {
         if ($has_root_stills) {
             $batch = image_sequence_ingest_folder($root, [
                 'recursive' => false,
+                'auto_split' => false,
                 'source_root' => $root,
             ]);
             echo "  (root): sequences=" . count($batch['sequences']) . " photos=" . count($batch['photos']) . "\n";

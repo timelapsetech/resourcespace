@@ -1416,6 +1416,9 @@ function image_sequence_get_effective_date(string $path): float
  * Paths are de-duplicated (some SMB iterators yield the same file repeatedly).
  * Order is natural filename order (one folder = one continuous shot).
  *
+ * Flat numbered shoots prefer pattern discovery (binary-search first/last) over
+ * scandir — SMB directory listings are often incomplete or hang on large folders.
+ *
  * @return list<array{path: string, date: float}>
  */
 function image_sequence_list_stills_in_folder(string $folder, bool $recursive = false): array
@@ -1449,19 +1452,35 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
             $path_set[$path] = true;
         }
     } else {
-        foreach (scandir($folder) ?: [] as $base) {
-            if ($base === '.' || $base === '..' || $base[0] === '.') {
-                continue;
+        // Prefer pattern discovery — avoids hung/incomplete SMB readdir on big shoots.
+        $discovered = image_sequence_discover_flat_numbered_stills($folder);
+        if ($discovered !== null) {
+            foreach ($discovered as $path) {
+                $path_set[$path] = true;
             }
-            $path = $folder . '/' . $base;
-            if (!is_file($path) || !image_sequence_is_supported_file($path)) {
-                continue;
+        } else {
+            // Flat shoot folders: filter by extension only — per-file is_file()/stat on SMB
+            // is extremely slow (thousands of round-trips) and was hanging re-ingest.
+            foreach (scandir($folder) ?: [] as $base) {
+                if ($base === '.' || $base === '..' || $base[0] === '.') {
+                    continue;
+                }
+                if (!image_sequence_is_supported_file($base)) {
+                    continue;
+                }
+                $path_set[$folder . '/' . $base] = true;
             }
-            $path_set[$path] = true;
+            // SMB mounts sometimes return incomplete / duplicated directory listings.
+            $paths = array_keys($path_set);
+            if ($paths !== []) {
+                $paths = image_sequence_expand_numbered_stills_listing($folder, $paths);
+                $path_set = array_fill_keys($paths, true);
+            }
         }
     }
 
     $paths = array_keys($path_set);
+
     if (PHP_SAPI === 'cli' && $paths !== []) {
         echo '  found ' . count($paths) . " stills\n";
         flush();
@@ -1477,6 +1496,224 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
     });
 
     return $files;
+}
+
+/**
+ * Discover a contiguous numbered still sequence from the folder basename without
+ * readdir. Uses a few is_file probes + binary search for the last frame.
+ *
+ * Expected name: {folder}/{folderName}_{NNNNN}.JPG (underscore/dash/none, pad 3–7).
+ *
+ * @return list<string>|null Absolute paths, or null if no pattern matches
+ */
+function image_sequence_discover_flat_numbered_stills(string $folder): ?array
+{
+    $folder = rtrim(str_replace('\\', '/', $folder), '/');
+    $code = basename($folder);
+    if ($code === '' || $code === '.' || $code === '..') {
+        return null;
+    }
+
+    $exts = [];
+    foreach (image_sequence_supported_extensions() as $ext) {
+        $ext = strtolower(ltrim((string) $ext, '.'));
+        if ($ext === '') {
+            continue;
+        }
+        // Prefer uppercase first — these archives are typically .JPG on SMB.
+        $exts[strtoupper($ext)] = true;
+        $exts[$ext] = true;
+    }
+    if ($exts === []) {
+        $exts = ['JPG' => true, 'jpg' => true];
+    }
+
+    $seps = ['_', '-', ''];
+    $pads = [5, 4, 6, 3, 7];
+
+    foreach ($seps as $sep) {
+        foreach (array_keys($exts) as $ext) {
+            foreach ($pads as $pad) {
+                $start = null;
+                foreach ([1, 0, 2] as $n) {
+                    $candidate = $folder . '/' . $code . $sep
+                        . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . '.' . $ext;
+                    if (@is_file($candidate)) {
+                        $start = $n;
+                        break;
+                    }
+                }
+                if ($start === null) {
+                    continue;
+                }
+
+                // Exponential search for an upper bound past the last frame.
+                $lo = $start;
+                $hi = $start + 1;
+                while ($hi - $start < 500000) {
+                    $candidate = $folder . '/' . $code . $sep
+                        . str_pad((string) $hi, $pad, '0', STR_PAD_LEFT) . '.' . $ext;
+                    if (!@is_file($candidate)) {
+                        break;
+                    }
+                    $lo = $hi;
+                    $hi = ($hi === $start + 1) ? $start + 2 : $hi * 2;
+                }
+
+                // Binary search last existing frame in ($lo, $hi).
+                $end = $lo;
+                $left = $lo + 1;
+                $right = $hi - 1;
+                while ($left <= $right) {
+                    $mid = intdiv($left + $right, 2);
+                    $candidate = $folder . '/' . $code . $sep
+                        . str_pad((string) $mid, $pad, '0', STR_PAD_LEFT) . '.' . $ext;
+                    if (@is_file($candidate)) {
+                        $end = $mid;
+                        $left = $mid + 1;
+                    } else {
+                        $right = $mid - 1;
+                    }
+                }
+
+                if ($end < $start) {
+                    continue;
+                }
+
+                $paths = [];
+                for ($n = $start; $n <= $end; $n++) {
+                    $paths[] = $folder . '/' . $code . $sep
+                        . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . '.' . $ext;
+                }
+
+                if (PHP_SAPI === 'cli') {
+                    echo '  discovered numbered sequence '
+                        . $code . $sep . '%0' . $pad . 'd.' . $ext
+                        . " frames {$start}–{$end} (" . count($paths) . ")\n";
+                    flush();
+                }
+
+                return $paths;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * When a flat folder listing looks like a padded frame sequence but is missing
+ * numbers in [min,max], probe a few gaps and — if they exist on disk — rebuild
+ * the full contiguous path list from the pattern (no per-frame listing needed).
+ *
+ * @param list<string> $paths
+ * @return list<string>
+ */
+function image_sequence_expand_numbered_stills_listing(string $folder, array $paths): array
+{
+    $folder = rtrim(str_replace('\\', '/', $folder), '/');
+    $parsed = [];
+    foreach ($paths as $path) {
+        $base = basename($path);
+        if (!preg_match('/^(.*?)(\d+)(\.[^.]+)$/', $base, $m)) {
+            return $paths;
+        }
+        $parsed[] = [
+            'prefix' => $m[1],
+            'number' => (int) $m[2],
+            'pad' => strlen($m[2]),
+            'suffix' => $m[3],
+        ];
+    }
+    if (count($parsed) < 3) {
+        return $paths;
+    }
+
+    $prefix = $parsed[0]['prefix'];
+    $suffix = $parsed[0]['suffix'];
+    $pad = $parsed[0]['pad'];
+    foreach ($parsed as $row) {
+        if ($row['prefix'] !== $prefix || $row['suffix'] !== $suffix || $row['pad'] !== $pad) {
+            return $paths;
+        }
+    }
+
+    $numbers = [];
+    foreach ($parsed as $row) {
+        $numbers[$row['number']] = true;
+    }
+    $min = min(array_keys($numbers));
+    $max = max(array_keys($numbers));
+    $expected = $max - $min + 1;
+    $listed = count($numbers);
+    if ($expected <= $listed) {
+        return $paths; // contiguous (or denser than range — already complete)
+    }
+
+    // Spot-check unlisted numbers in the span — SMB often omits names from
+    // readdir while the files remain reachable by path.
+    $missing = [];
+    for ($n = $min; $n <= $max; $n++) {
+        if (!isset($numbers[$n])) {
+            $missing[] = $n;
+        }
+    }
+    $probe_count = min(12, count($missing));
+    $probe_hits = 0;
+    if ($probe_count > 0) {
+        $step = max(1, (int) floor(count($missing) / $probe_count));
+        for ($i = 0; $i < $probe_count; $i++) {
+            $n = $missing[min(count($missing) - 1, $i * $step)];
+            $candidate = $folder . '/' . $prefix . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . $suffix;
+            if (@is_file($candidate)) {
+                $probe_hits++;
+            }
+        }
+    }
+    // Require most probes to exist before trusting a full expand.
+    if ($probe_hits < max(2, (int) ceil($probe_count * 0.6))) {
+        if (PHP_SAPI === 'cli') {
+            echo "  listing incomplete ({$listed}/{$expected}) but gap probes failed"
+                . " ({$probe_hits}/{$probe_count}) — keeping listed files only\n";
+            flush();
+        }
+        return $paths;
+    }
+
+    // Widen bounds a little in case min/max were also missing from the listing.
+    $widen_hits = 0;
+    for ($guard = 0; $guard < 5000; $guard++) {
+        $n = $min - 1;
+        $candidate = $folder . '/' . $prefix . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . $suffix;
+        if (!@is_file($candidate)) {
+            break;
+        }
+        $min = $n;
+        $widen_hits++;
+    }
+    for ($guard = 0; $guard < 5000; $guard++) {
+        $n = $max + 1;
+        $candidate = $folder . '/' . $prefix . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . $suffix;
+        if (!@is_file($candidate)) {
+            break;
+        }
+        $max = $n;
+        $widen_hits++;
+    }
+
+    $expanded = [];
+    for ($n = $min; $n <= $max; $n++) {
+        $expanded[] = $folder . '/' . $prefix . str_pad((string) $n, $pad, '0', STR_PAD_LEFT) . $suffix;
+    }
+
+    if (PHP_SAPI === 'cli') {
+        echo '  expanded numbered listing ' . $listed . ' → ' . count($expanded)
+            . " (pattern {$prefix}%0{$pad}d{$suffix}, probes {$probe_hits}/{$probe_count}"
+            . ($widen_hits > 0 ? ", widened +{$widen_hits}" : '') . ")\n";
+        flush();
+    }
+
+    return $expanded;
 }
 
 /**
@@ -1629,24 +1866,36 @@ function image_sequence_infer_frame_pattern(array $member_basenames): ?array
 }
 
 /**
- * Basenames already claimed by any Image Sequence in a folder.
+ * Basenames already claimed by any live Image Sequence in a folder.
+ *
+ * Soft-deleted resources (archive = $resource_deletion_state) do not claim frames,
+ * so a folder can be re-ingested after delete.
  *
  * @return array<string, int> basename => resource ref
  */
 function image_sequence_claimed_basenames_in_folder(string $folder_rel): array
 {
+    global $resource_deletion_state;
+
     $claimed = [];
     $rows = ps_query(
-        'SELECT resource, member_files FROM resource_image_sequence WHERE folder_path = ?',
+        'SELECT ris.resource, ris.member_files, r.archive
+           FROM resource_image_sequence ris
+           JOIN resource r ON r.ref = ris.resource
+          WHERE ris.folder_path = ?',
         ['s', $folder_rel]
     );
     foreach ($rows as $row) {
+        if (isset($resource_deletion_state) && (int) $row['archive'] === (int) $resource_deletion_state) {
+            continue;
+        }
         $members = json_decode((string) $row['member_files'], true);
         if (!is_array($members)) {
             continue;
         }
         foreach ($members as $name) {
             $claimed[(string) $name] = (int) $row['resource'];
+            $claimed[strtolower((string) $name)] = (int) $row['resource'];
         }
     }
 
@@ -1660,18 +1909,30 @@ function image_sequence_claimed_basenames_in_folder(string $folder_rel): array
  */
 function image_sequence_find_existing_sequence(string $folder_rel, array $member_basenames): int
 {
-    $wanted = $member_basenames;
+    global $resource_deletion_state;
+
+    $wanted = array_map('strtolower', $member_basenames);
     sort($wanted);
     $rows = ps_query(
-        'SELECT resource, member_files FROM resource_image_sequence WHERE folder_path = ?',
+        'SELECT ris.resource, ris.member_files, ris.frame_count, r.archive
+           FROM resource_image_sequence ris
+           JOIN resource r ON r.ref = ris.resource
+          WHERE ris.folder_path = ?',
         ['s', $folder_rel]
     );
     foreach ($rows as $row) {
+        if (isset($resource_deletion_state) && (int) $row['archive'] === (int) $resource_deletion_state) {
+            continue;
+        }
+        // One folder = one live sequence: any live row for this path counts.
+        if ((int) $row['frame_count'] > 0) {
+            return (int) $row['resource'];
+        }
         $members = json_decode((string) $row['member_files'], true);
         if (!is_array($members)) {
             continue;
         }
-        $have = $members;
+        $have = array_map('strtolower', $members);
         sort($have);
         if ($have === $wanted) {
             return (int) $row['resource'];
@@ -1727,7 +1988,8 @@ function image_sequence_ingest_folder(string $folder_absolute, array $options = 
             return true;
         }
         $claimed = image_sequence_claimed_basenames_in_folder($folder_rel);
-        return !isset($claimed[basename($file['path'])]);
+        $base = basename($file['path']);
+        return !isset($claimed[$base]) && !isset($claimed[strtolower($base)]);
     }));
 
     if ($files === []) {
@@ -1778,8 +2040,9 @@ function image_sequence_ingest_folder(string $folder_absolute, array $options = 
             $cadence = image_sequence_detect_normal_interval($dated);
             $segments = image_sequence_split_files($dated, true);
         } else {
-            $paths = array_column($group_files, 'path');
-            $cadence = image_sequence_estimate_cadence_from_paths($paths);
+            // Sparse EXIF for cadence happens inside create → apply_timeline_sparse
+            // (one ExifTool pass for first/last + samples). Do not pre-date here.
+            $cadence = null;
             $segments = [$group_files];
         }
 
