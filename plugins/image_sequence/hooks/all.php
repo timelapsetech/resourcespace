@@ -88,6 +88,24 @@ function HookImage_sequenceAllOpenai_gpt_image_path($ref = 0)
 }
 
 /**
+ * Search / collection cards: show "Sequence" instead of the stored JSON extension.
+ *
+ * @param array $resource Search-result row
+ *
+ * @return string|false
+ */
+function HookImage_sequenceAllResourcecard_filetype_label($resource = [])
+{
+    global $lang;
+
+    if (!is_array($resource) || !image_sequence_is_sequence_resource($resource)) {
+        return false;
+    }
+
+    return (string) ($lang['image_sequence_card_filetype'] ?? 'Sequence');
+}
+
+/**
  * After a file upload succeeds: if the resource is Image Sequence type and the
  * file is a ZIP, expand under filestore staging and re-ingest with cadence split.
  *

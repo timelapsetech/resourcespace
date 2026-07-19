@@ -1258,7 +1258,7 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
         return [];
     }
 
-    $files = [];
+    $paths = [];
     if ($recursive) {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($folder, FilesystemIterator::SKIP_DOTS)
@@ -1272,7 +1272,7 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
             if ($base[0] === '.' || !image_sequence_is_supported_file($path)) {
                 continue;
             }
-            $files[] = ['path' => $path, 'date' => image_sequence_get_effective_date($path)];
+            $paths[] = $path;
         }
     } else {
         foreach (scandir($folder) ?: [] as $base) {
@@ -1283,8 +1283,21 @@ function image_sequence_list_stills_in_folder(string $folder, bool $recursive = 
             if (!is_file($path) || !image_sequence_is_supported_file($path)) {
                 continue;
             }
-            $files[] = ['path' => $path, 'date' => image_sequence_get_effective_date($path)];
+            $paths[] = $path;
         }
+    }
+
+    // Batch ExifTool (one process per chunk) — per-file calls are far too slow on network volumes.
+    $dates = image_sequence_batch_effective_dates($paths);
+    $files = [];
+    foreach ($paths as $path) {
+        if (isset($dates[$path])) {
+            $date = $dates[$path];
+        } else {
+            $mtime = @filemtime($path);
+            $date = $mtime !== false ? (float) $mtime : (float) time();
+        }
+        $files[] = ['path' => $path, 'date' => $date];
     }
 
     usort($files, static function ($a, $b) {

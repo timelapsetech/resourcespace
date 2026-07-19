@@ -7,5 +7,7 @@
 1.5 AI metadata from representative frame via openai_gpt/Ollama (offline job when rep frame is set)
 1.6 Scan roots are read-only: manifests in filestore, web staging under $storagedir (never write/delete in $syncdir)
 1.6.1 Allow ExifTool/FFmpeg shell paths under $image_sequence_sync_roots (external volumes with spaces in folder names)
+1.6.2 Batch ExifTool date reads when listing stills; year-folder sync prints per-shoot progress
 1.7 View metadata tabs: Default (descriptive), Sequence (timing/edit points), Image (camera/EXIF)
 1.8 On ingest, write folder name, full folder path, and sequence code (name before first space/dash/underscore) to metadata
+1.9 Search cards show "Sequence" instead of "JSON" for Image Sequence resources

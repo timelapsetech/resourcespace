@@ -266,9 +266,16 @@ if ($use_selection_collection && in_array($ref, $selection_collection_resources)
                         echo '<i title="' . escape($type["name"]) . '" class="icon-' . escape($type["icon"]) . '"></i>';
                         }
                     }
-                if (isset($result[$n]['file_extension']) && $result[$n]['file_extension'] != "") { ?>
-                    <?php echo "<span>" . strtoupper(escape($result[$n]['file_extension'])) . "</span>"; ?>
-                    <?php
+                $filetype_label = hook('resourcecard_filetype_label', '', [$result[$n]]);
+                if ($filetype_label === false) {
+                    if (isset($result[$n]['file_extension']) && $result[$n]['file_extension'] != "") {
+                        $filetype_label = strtoupper((string) $result[$n]['file_extension']);
+                    } else {
+                        $filetype_label = '';
+                    }
+                }
+                if ($filetype_label !== '') {
+                    echo '<span>' . escape((string) $filetype_label) . '</span>';
                 }
                 echo '</div>'; 
                  ?>

@@ -1,7 +1,7 @@
 name: image_sequence
 title: Image Sequence
 author: Dave Klee
-version: 1.8
+version: 1.9
 desc: Ingest folders of stills as Image Sequence resources (read-only scan roots, filestore manifests/staging, metadata tabs, folder name/path/sequence-code on ingest, cadence auto-split, Omakase frame-accurate in/out + representative frame, sequence timeline/exposure analysis, AI metadata from representative frame via Ollama). Requires the StaticSync staticsync_skip_file hook — see readme.txt / patches/.
 icon: images
 icon-colour: steelblue

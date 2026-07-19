@@ -150,7 +150,13 @@ $resource_view_title = i18n_get_translated($result[$n]["field" . $view_title_fie
     ?>
 
     <td>
-        <?php echo strtoupper(escape((string) $result[$n]["file_extension"])); ?>
+        <?php
+        $filetype_label = hook('resourcecard_filetype_label', '', [$result[$n]]);
+        if ($filetype_label === false) {
+            $filetype_label = strtoupper((string) $result[$n]["file_extension"]);
+        }
+        echo escape((string) $filetype_label);
+        ?>
     </td>
 
     <?php
