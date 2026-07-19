@@ -111,12 +111,14 @@ View page
   Scrub the Omakase proxy player frame-accurately: Mark In / Mark Out, save
   those points to metadata (imgseq_inframe / imgseq_outframe), set a
   representative frame, and download a ZIP of frames.
-  Setting a representative frame pulls still metadata into the asset:
-  width/height/DPI/file size (resource properties) plus camera make/model,
-  lens, ISO, aperture, shutter, focal length, bit depth, color space, and
-  related ExifTool-mapped fields. If the openai_gpt plugin is active with an
-  image-input field, an offline job also regenerates AI caption/tags/etc from
-  that representative still (Ollama/Moondream supported).
+  Setting a representative frame copies that still at full resolution into
+  filestore as an alternative file named "Representative frame" (replacing any
+  previous one), and pulls still metadata into the asset: width/height/DPI/file
+  size (resource properties) plus camera make/model, lens, ISO, aperture,
+  shutter, focal length, bit depth, color space, and related ExifTool-mapped
+  fields. If the openai_gpt plugin is active with an image-input field, an
+  offline job also regenerates AI caption/tags/etc from that representative
+  still (Ollama/Moondream supported).
 
   On create (and when updating the representative frame), the plugin also
   analyses the whole sequence for:

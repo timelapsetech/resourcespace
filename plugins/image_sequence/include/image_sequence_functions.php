@@ -1694,6 +1694,8 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         image_sequence_apply_sequence_timeline_metadata($ref, $member_paths);
         if ($member_paths !== []) {
             image_sequence_extract_frame_metadata($ref, $member_paths[0]);
+            // Default representative still (frame 0) into managed storage.
+            image_sequence_save_representative_alt_file($ref, $member_paths[0], 0);
         }
     } catch (Throwable $e) {
         debug('image_sequence_create_sequence_resource timeline/metadata: ' . $e->getMessage());
@@ -2069,6 +2071,98 @@ function image_sequence_generate_proxy(int $ref): bool
 }
 
 /**
+ * Stable name / alt_type for the managed full-res representative still.
+ * Replaced whenever a new representative frame is chosen.
+ */
+function image_sequence_representative_alt_name(): string
+{
+    global $lang;
+
+    return $lang['image_sequence_rep_frame_alt_name'] ?? 'Representative frame';
+}
+
+function image_sequence_representative_alt_type(): string
+{
+    return 'image_sequence_representative';
+}
+
+/**
+ * Copy the chosen still into filestore as an alternative file (full resolution).
+ * Any previous representative-frame alternative is removed first.
+ *
+ * @return int Alternative file ref, or 0 on failure
+ */
+function image_sequence_save_representative_alt_file(int $ref, string $frame_path, int $frame_index = -1): int
+{
+    global $lang;
+
+    if ($ref <= 0 || $frame_path === '' || !is_file($frame_path)) {
+        return 0;
+    }
+
+    $extension = strtolower(pathinfo($frame_path, PATHINFO_EXTENSION));
+    if ($extension === '') {
+        $extension = 'jpg';
+    }
+    $basename = basename($frame_path);
+    $alt_name = image_sequence_representative_alt_name();
+    $alt_type = image_sequence_representative_alt_type();
+    $description = $lang['image_sequence_rep_frame_alt_desc'] ?? 'Full-resolution representative still from the image sequence';
+    if ($frame_index >= 0) {
+        $description .= ' (frame ' . $frame_index . ')';
+    }
+
+    // Replace any prior representative alt (by type, then by name for older rows).
+    $existing = ps_query(
+        'SELECT ref FROM resource_alt_files WHERE resource = ? AND (alt_type = ? OR name = ?)',
+        ['i', $ref, 's', $alt_type, 's', $alt_name]
+    );
+    foreach ($existing as $row) {
+        delete_alternative_file($ref, (int) $row['ref']);
+    }
+
+    $aref = (int) add_alternative_file(
+        $ref,
+        $alt_name,
+        $description,
+        $basename,
+        $extension,
+        0,
+        $alt_type
+    );
+    if ($aref <= 0) {
+        return 0;
+    }
+
+    $dest = get_resource_path($ref, true, '', true, $extension, -1, 1, false, '', $aref);
+    if (!@copy($frame_path, $dest) || !is_file($dest)) {
+        delete_alternative_file($ref, $aref);
+        debug("image_sequence_save_representative_alt_file: failed to copy {$frame_path} → {$dest}");
+
+        return 0;
+    }
+
+    $file_size = filesize_unlimited($dest);
+    ps_query(
+        'UPDATE resource_alt_files
+            SET file_name = ?, file_extension = ?, file_size = ?, description = ?, alt_type = ?, creation_date = NOW()
+          WHERE resource = ? AND ref = ?',
+        [
+            's', $basename,
+            's', $extension,
+            'i', $file_size,
+            's', $description,
+            's', $alt_type,
+            'i', $ref,
+            'i', $aref,
+        ]
+    );
+    update_disk_usage($ref);
+
+    return $aref;
+}
+
+/**
  * Set representative frame from proxy scrub index; pull EXIF into metadata; refresh poster.
  *
  * @return array{ok: bool, message: string, frame?: int}
@@ -2110,6 +2204,13 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
         image_sequence_apply_sequence_timeline_metadata($ref, $paths);
     } catch (Throwable $e) {
         debug('image_sequence_set_representative_frame metadata: ' . $e->getMessage());
+    }
+
+    // Full-res still into managed storage as a replaceable alternative file.
+    try {
+        image_sequence_save_representative_alt_file($ref, $frame_path, $frame_index);
+    } catch (Throwable $e) {
+        debug('image_sequence_set_representative_frame alt file: ' . $e->getMessage());
     }
 
     // Refresh poster from chosen frame (prefer direct copy for stills).
