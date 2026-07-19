@@ -198,23 +198,29 @@ function aria_home_render_page(
 
         <?php if ($featured_list !== []) { ?>
             <section class="aria-hero<?php echo $carousel ? ' aria-hero--carousel' : ''; ?>"
+                     data-hero-carousel="1"
+                     data-interval="<?php echo (int) $hero_interval; ?>"
                      <?php if ($carousel) { ?>
-                         data-hero-carousel="1"
-                         data-interval="<?php echo (int) $hero_interval; ?>"
                          aria-roledescription="carousel"
                          aria-label="<?php echo escape($lang['aria_home_featured'] ?? 'Featured'); ?>"
                      <?php } ?>>
                 <div class="aria-hero-slides">
                     <?php foreach ($featured_list as $i => $featured) {
                         $ftitle = aria_home_resource_title($featured);
-                        $fpreview = aria_home_preview_url($featured);
-                        $fkind = aria_home_resource_kind($featured);
+                        $media = aria_home_hero_media($featured);
+                        $fpreview = $media['still'];
+                        $fvideo = $media['video'];
+                        $fkind = $media['kind'];
+                        $fin = (float) ($media['in'] ?? 0);
+                        $fout = (float) ($media['out'] ?? 0);
                         $fcaption = aria_home_caption($featured);
                         $furl = generateURL($baseurl_short . 'pages/view.php', ['ref' => (int) $featured['ref']]);
                         $active = $i === 0;
+                        $has_video = $fvideo !== '';
                         ?>
-                        <article class="aria-hero-slide<?php echo $active ? ' is-active' : ''; ?>"
+                        <article class="aria-hero-slide<?php echo $active ? ' is-active' : ''; ?><?php echo $has_video ? ' aria-hero-slide--motion' : ''; ?>"
                                  data-slide="<?php echo (int) $i; ?>"
+                                 <?php echo $has_video ? 'data-has-video="1"' : ''; ?>
                                  <?php echo $active ? '' : 'aria-hidden="true"'; ?>>
                             <?php if ($fpreview !== '') { ?>
                                 <img class="aria-hero-image"
@@ -225,6 +231,17 @@ function aria_home_render_page(
                                          loading="lazy"
                                      <?php } ?>
                                      alt="<?php echo escape($ftitle); ?>">
+                            <?php } ?>
+                            <?php if ($has_video) { ?>
+                                <video class="aria-hero-video"
+                                       muted
+                                       playsinline
+                                       preload="none"
+                                       poster="<?php echo escape($fpreview); ?>"
+                                       data-src="<?php echo escape($fvideo); ?>"
+                                       data-in-time="<?php echo escape(sprintf('%.4F', $fin)); ?>"
+                                       data-out-time="<?php echo escape(sprintf('%.4F', $fout)); ?>"
+                                       aria-hidden="true"></video>
                             <?php } ?>
                             <div class="aria-hero-aurora" aria-hidden="true"></div>
                             <div class="aria-hero-fade" aria-hidden="true"></div>

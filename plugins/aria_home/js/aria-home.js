@@ -171,6 +171,33 @@
         return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
 
+    /**
+     * Prefer stills on slow / metered connections; play motion when bandwidth looks fine.
+     */
+    function shouldUseHeroVideo() {
+        if (prefersReducedMotion()) {
+            return false;
+        }
+        var conn =
+            navigator.connection ||
+            navigator.mozConnection ||
+            navigator.webkitConnection;
+        if (!conn) {
+            return true;
+        }
+        if (conn.saveData) {
+            return false;
+        }
+        var type = String(conn.effectiveType || "").toLowerCase();
+        if (type === "slow-2g" || type === "2g" || type === "3g") {
+            return false;
+        }
+        if (typeof conn.downlink === "number" && conn.downlink > 0 && conn.downlink < 1.5) {
+            return false;
+        }
+        return true;
+    }
+
     function hydrateHeroSlide(slide) {
         if (!slide) {
             return;
@@ -182,22 +209,234 @@
         }
     }
 
+    function pauseHeroVideo(slide) {
+        if (!slide) {
+            return;
+        }
+        var video = slide.querySelector("video.aria-hero-video");
+        if (video) {
+            try {
+                video.pause();
+            } catch (e) {
+                /* ignore */
+            }
+            if (video._ariaTrimHandler) {
+                video.removeEventListener("timeupdate", video._ariaTrimHandler);
+                video._ariaTrimHandler = null;
+            }
+        }
+        slide.classList.remove("is-playing-video");
+    }
+
+    function heroTrimRange(video) {
+        var inTime = parseFloat(video.getAttribute("data-in-time") || "0");
+        var outTime = parseFloat(video.getAttribute("data-out-time") || "0");
+        if (!isFinite(inTime) || inTime < 0) {
+            inTime = 0;
+        }
+        if (!isFinite(outTime) || outTime <= 0) {
+            outTime = 0;
+        }
+        // Only treat as a trim when out is meaningfully after in
+        var hasTrim = outTime > inTime + 0.05;
+        return { inTime: inTime, outTime: outTime, hasTrim: hasTrim };
+    }
+
+    function attachHeroTrimLoop(video) {
+        if (video._ariaTrimHandler) {
+            video.removeEventListener("timeupdate", video._ariaTrimHandler);
+        }
+        var trim = heroTrimRange(video);
+        if (!trim.hasTrim) {
+            video.loop = true;
+            video._ariaTrimHandler = null;
+            return;
+        }
+        video.loop = false;
+        video._ariaTrimHandler = function () {
+            if (video.paused) {
+                return;
+            }
+            // Restart just before out so the loop feels continuous
+            if (video.currentTime >= trim.outTime - 0.04) {
+                try {
+                    video.currentTime = trim.inTime;
+                } catch (e) {
+                    /* ignore seek errors mid-load */
+                }
+            }
+        };
+        video.addEventListener("timeupdate", video._ariaTrimHandler);
+    }
+
+    function seekHeroToIn(video, done) {
+        var trim = heroTrimRange(video);
+        var target = trim.hasTrim ? trim.inTime : 0;
+
+        function finish() {
+            video.removeEventListener("seeked", onSeeked);
+            video.removeEventListener("loadedmetadata", onMeta);
+            if (typeof done === "function") {
+                done();
+            }
+        }
+
+        function onSeeked() {
+            finish();
+        }
+
+        function onMeta() {
+            try {
+                if (Math.abs(video.currentTime - target) > 0.05) {
+                    video.currentTime = target;
+                    return;
+                }
+            } catch (e) {
+                /* ignore */
+            }
+            finish();
+        }
+
+        video.addEventListener("seeked", onSeeked);
+        if (video.readyState >= 1) {
+            try {
+                video.currentTime = target;
+                // If already at target, seeked may not fire
+                window.setTimeout(function () {
+                    if (Math.abs(video.currentTime - target) < 0.08) {
+                        finish();
+                    }
+                }, 120);
+            } catch (e) {
+                finish();
+            }
+        } else {
+            video.addEventListener("loadedmetadata", onMeta);
+        }
+    }
+
+    function playHeroVideo(slide, allowVideo) {
+        if (!slide || !allowVideo || slide.getAttribute("data-has-video") !== "1") {
+            pauseHeroVideo(slide);
+            return;
+        }
+        var video = slide.querySelector("video.aria-hero-video");
+        if (!video) {
+            return;
+        }
+        var src = video.getAttribute("data-src") || "";
+        if (!src) {
+            return;
+        }
+        if (!video.getAttribute("src")) {
+            video.setAttribute("src", src);
+            video.load();
+        }
+        attachHeroTrimLoop(video);
+        seekHeroToIn(video, function () {
+            var playPromise = video.play();
+            if (playPromise && typeof playPromise.then === "function") {
+                playPromise
+                    .then(function () {
+                        slide.classList.add("is-playing-video");
+                    })
+                    .catch(function () {
+                        // Autoplay blocked or failed — keep the still
+                        pauseHeroVideo(slide);
+                    });
+            } else {
+                slide.classList.add("is-playing-video");
+            }
+        });
+    }
+
+    /**
+     * Pin the hero to the viewport width with position:fixed.
+     * #UICenter uses overflow-y:auto which clips 100vw breakouts.
+     */
+    function bindHeroFullBleed(hero) {
+        if (!hero || hero.dataset.fullBleedBound === "1") {
+            syncHeroFullBleed(hero);
+            return;
+        }
+        hero.dataset.fullBleedBound = "1";
+
+        var spacer = hero.previousElementSibling;
+        if (!spacer || !spacer.classList.contains("aria-hero-spacer")) {
+            spacer = document.createElement("div");
+            spacer.className = "aria-hero-spacer";
+            spacer.setAttribute("aria-hidden", "true");
+            if (hero.parentNode) {
+                hero.parentNode.insertBefore(spacer, hero);
+            }
+        }
+        hero._ariaHeroSpacer = spacer;
+        hero.classList.add("is-fullbleed");
+
+        var sync = function () {
+            syncHeroFullBleed(hero);
+        };
+        sync();
+
+        var scroller = document.getElementById("UICenter") || window;
+        scroller.addEventListener("scroll", sync, { passive: true });
+        window.addEventListener("resize", sync);
+        if (typeof ResizeObserver !== "undefined") {
+            var ro = new ResizeObserver(sync);
+            ro.observe(spacer);
+        }
+    }
+
+    function syncHeroFullBleed(hero) {
+        if (!hero || !hero.classList.contains("is-fullbleed")) {
+            return;
+        }
+        var spacer = hero._ariaHeroSpacer || hero.previousElementSibling;
+        if (!spacer || !spacer.classList.contains("aria-hero-spacer")) {
+            return;
+        }
+
+        // Spacer owns in-flow height from CSS (min(52vh, 560px))
+        spacer.style.height = "";
+        spacer.style.minHeight = "";
+
+        var rect = spacer.getBoundingClientRect();
+        hero.style.top = Math.round(rect.top) + "px";
+        hero.style.left = "0px";
+        hero.style.width = window.innerWidth + "px";
+        hero.style.height = Math.round(rect.height) + "px";
+    }
+
     function bindHeroCarousel(hero) {
         if (!hero || hero.dataset.heroBound === "1") {
+            bindHeroFullBleed(hero);
             return;
         }
         var slides = Array.prototype.slice.call(hero.querySelectorAll(".aria-hero-slide"));
         var dots = Array.prototype.slice.call(hero.querySelectorAll(".aria-hero-dot"));
-        if (slides.length < 2) {
+        if (!slides.length) {
             return;
         }
         hero.dataset.heroBound = "1";
+        bindHeroFullBleed(hero);
 
         var index = 0;
         var timer = null;
+        var allowVideo = shouldUseHeroVideo();
         var interval = parseInt(hero.getAttribute("data-interval") || "7000", 10) || 7000;
         if (interval < 3000) {
             interval = 3000;
+        }
+
+        // Warm the first slide immediately
+        hydrateHeroSlide(slides[0]);
+        playHeroVideo(slides[0], allowVideo);
+
+        // Prefetch the next still (and optionally video metadata) on a quiet tick
+        if (slides.length > 1) {
+            window.setTimeout(function () {
+                hydrateHeroSlide(slides[1]);
+            }, 400);
         }
 
         function goTo(next) {
@@ -210,6 +449,7 @@
                 return;
             }
             hydrateHeroSlide(slide);
+            pauseHeroVideo(prev);
             if (prev) {
                 prev.classList.remove("is-active");
                 prev.setAttribute("aria-hidden", "true");
@@ -222,6 +462,9 @@
             slide.querySelectorAll("a").forEach(function (a) {
                 a.setAttribute("tabindex", "0");
             });
+            playHeroVideo(slide, allowVideo);
+            // Prefetch the following still
+            hydrateHeroSlide(slides[(next + 1) % slides.length]);
             dots.forEach(function (dot, i) {
                 var on = i === next;
                 dot.classList.toggle("is-active", on);
@@ -236,7 +479,7 @@
 
         function start() {
             stop();
-            if (prefersReducedMotion()) {
+            if (prefersReducedMotion() || slides.length < 2) {
                 return;
             }
             timer = window.setInterval(nextSlide, interval);
@@ -257,22 +500,42 @@
             });
         });
 
-        hero.addEventListener("mouseenter", stop);
-        hero.addEventListener("mouseleave", start);
-        hero.addEventListener("focusin", stop);
-        hero.addEventListener("focusout", function (e) {
-            if (!hero.contains(e.relatedTarget)) {
-                start();
-            }
-        });
+        if (slides.length > 1) {
+            hero.addEventListener("mouseenter", stop);
+            hero.addEventListener("mouseleave", start);
+            hero.addEventListener("focusin", stop);
+            hero.addEventListener("focusout", function (e) {
+                if (!hero.contains(e.relatedTarget)) {
+                    start();
+                }
+            });
+        }
 
         document.addEventListener("visibilitychange", function () {
             if (document.hidden) {
                 stop();
+                pauseHeroVideo(slides[index]);
             } else {
+                playHeroVideo(slides[index], allowVideo);
                 start();
             }
         });
+
+        // If connection quality changes mid-session, adapt
+        var conn =
+            navigator.connection ||
+            navigator.mozConnection ||
+            navigator.webkitConnection;
+        if (conn && typeof conn.addEventListener === "function") {
+            conn.addEventListener("change", function () {
+                allowVideo = shouldUseHeroVideo();
+                if (allowVideo) {
+                    playHeroVideo(slides[index], true);
+                } else {
+                    pauseHeroVideo(slides[index]);
+                }
+            });
+        }
 
         start();
     }

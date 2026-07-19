@@ -30,6 +30,9 @@ function HookAria_homeHomeHomebeforepanels(): void
     // Hide default home chrome when Aria home is active
     echo '<style>'
         . '#hero_banner,#HomePanelContainer,#HomeSiteTextPanel,#SlideshowContainer,.slide{display:none!important}'
-        . 'body:has(#aria-home) #CentralSpace{padding-top:0!important}'
+        . 'body:has(#aria-home) #CentralSpaceContainer,body:has(#aria-home) #CentralSpace{'
+        . 'display:block!important;width:100%!important;max-width:none!important;'
+        . 'padding-top:0!important;padding-left:0!important;padding-right:0!important;'
+        . 'margin-left:0!important;margin-right:0!important;overflow:visible!important}'
         . '</style>';
 }

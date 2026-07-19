@@ -665,6 +665,176 @@ function aria_home_preview_url(array $resource): string
     return '';
 }
 
+/**
+ * Make a resource path/URL absolute when needed.
+ */
+function aria_home_absolute_url(string $url): string
+{
+    global $baseurl;
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+    if (strpos($url, '://') !== false) {
+        return $url;
+    }
+    return rtrim((string) $baseurl, '/') . '/' . ltrim($url, '/');
+}
+
+/**
+ * Motion preview (mp4 proxy) URL for hero carousel, when available.
+ * Covers standard videos and image-sequence proxies.
+ */
+function aria_home_video_preview_url(array $resource): string
+{
+    global $ffmpeg_preview_extension;
+
+    $ref = (int) ($resource['ref'] ?? 0);
+    if ($ref <= 0) {
+        return '';
+    }
+
+    $ext = (string) ($ffmpeg_preview_extension ?: 'mp4');
+
+    // Image sequence — use generated proxy when ready
+    if (
+        function_exists('image_sequence_is_sequence_resource')
+        && image_sequence_is_sequence_resource($resource)
+        && function_exists('image_sequence_get_data')
+    ) {
+        $data = image_sequence_get_data($ref);
+        if (!is_array($data) || ($data['proxy_status'] ?? '') !== 'ready') {
+            return '';
+        }
+        $path = get_resource_path($ref, true, 'pre', false, $ext);
+        if (!is_string($path) || !is_file($path)) {
+            return '';
+        }
+        $url = get_resource_path($ref, false, 'pre', false, $ext, true, 1, false, '', -1, true);
+        return aria_home_absolute_url((string) $url);
+    }
+
+    // Standard video resources (or ffmpeg-supported originals)
+    $is_video = aria_home_resource_kind($resource) === 'video'
+        || (
+            function_exists('image_sequence_is_video_resource')
+            && image_sequence_is_video_resource($resource)
+        );
+    if (!$is_video) {
+        return '';
+    }
+
+    $path = get_resource_path($ref, true, 'pre', false, $ext);
+    if ((!is_string($path) || !is_file($path)) && function_exists('image_sequence_video_playback_path')) {
+        $path = image_sequence_video_playback_path($resource);
+    }
+    if (!is_string($path) || $path === '' || !is_file($path)) {
+        return '';
+    }
+
+    $url = get_resource_path($ref, false, 'pre', false, $ext, true, 1, false, '', -1, true);
+    return aria_home_absolute_url((string) $url);
+}
+
+/**
+ * In/out trim for hero video playback, as seconds.
+ * Uses sequence table marks or video NLE metadata when available.
+ *
+ * @return array{in:float,out:float,fps:float}
+ */
+function aria_home_hero_trim(array $resource): array
+{
+    $ref = (int) ($resource['ref'] ?? 0);
+    $trim = ['in' => 0.0, 'out' => 0.0, 'fps' => 0.0];
+    if ($ref <= 0) {
+        return $trim;
+    }
+
+    if (
+        function_exists('image_sequence_is_sequence_resource')
+        && image_sequence_is_sequence_resource($resource)
+        && function_exists('image_sequence_get_data')
+    ) {
+        $data = image_sequence_get_data($ref);
+        if (!is_array($data)) {
+            return $trim;
+        }
+        $fps = (float) ($data['fps'] ?? 0);
+        if ($fps <= 0) {
+            $fps = 30.0;
+        }
+        $frame_count = max(1, (int) ($data['frame_count'] ?? 1));
+        $in_frame = isset($data['in_frame']) && $data['in_frame'] !== null && $data['in_frame'] !== ''
+            ? (int) $data['in_frame']
+            : 0;
+        $out_frame = isset($data['out_frame']) && $data['out_frame'] !== null && $data['out_frame'] !== ''
+            ? (int) $data['out_frame']
+            : ($frame_count - 1);
+        if (function_exists('image_sequence_clamp_frame_index')) {
+            $in_frame = image_sequence_clamp_frame_index($in_frame, $frame_count);
+            $out_frame = image_sequence_clamp_frame_index($out_frame, $frame_count);
+        }
+        if ($out_frame < $in_frame) {
+            $tmp = $in_frame;
+            $in_frame = $out_frame;
+            $out_frame = $tmp;
+        }
+
+        return [
+            'in' => $in_frame / $fps,
+            'out' => ($out_frame + 1) / $fps, // exclusive end of last included frame
+            'fps' => $fps,
+        ];
+    }
+
+    if (
+        function_exists('image_sequence_is_video_resource')
+        && image_sequence_is_video_resource($resource)
+        && function_exists('image_sequence_video_get_marks')
+    ) {
+        $marks = image_sequence_video_get_marks($ref);
+        $fps = (float) ($marks['fps'] ?? 0);
+        if ($fps <= 0) {
+            $fps = 25.0;
+        }
+        $in_frame = (int) ($marks['in_frame'] ?? 0);
+        $out_frame = (int) ($marks['out_frame'] ?? 0);
+
+        return [
+            'in' => $in_frame / $fps,
+            'out' => ($out_frame + 1) / $fps,
+            'fps' => $fps,
+        ];
+    }
+
+    return $trim;
+}
+
+/**
+ * Hero media payload: still always, video when a motion proxy exists.
+ *
+ * @return array{still:string,video:string,kind:string,in:float,out:float}
+ */
+function aria_home_hero_media(array $resource): array
+{
+    $still = aria_home_preview_url($resource);
+    $video = aria_home_video_preview_url($resource);
+    $kind = aria_home_resource_kind($resource);
+    if ($video !== '' && $kind === 'image') {
+        // Sequences with a motion proxy read as video in the hero eyebrow
+        $kind = 'video';
+    }
+    $trim = $video !== '' ? aria_home_hero_trim($resource) : ['in' => 0.0, 'out' => 0.0, 'fps' => 0.0];
+
+    return [
+        'still' => $still,
+        'video' => $video,
+        'kind' => $kind,
+        'in' => (float) ($trim['in'] ?? 0),
+        'out' => (float) ($trim['out'] ?? 0),
+    ];
+}
+
 function aria_home_resource_title(array $resource): string
 {
     global $view_title_field;
