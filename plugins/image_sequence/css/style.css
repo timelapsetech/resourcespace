@@ -24,23 +24,24 @@
 
 .image_sequence_frame_overlay {
     position: absolute;
-    left: 12px;
-    top: 12px;
+    right: 14px;
+    left: auto;
+    top: 14px;
     z-index: 5;
     display: inline-flex;
     align-items: baseline;
-    gap: 0.35rem;
-    padding: 0.35rem 0.55rem;
-    border-radius: 4px;
-    background: rgba(0, 0, 0, 0.72);
+    gap: 0.45rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.78);
     border: 1px solid rgba(255, 224, 138, 0.45);
     color: #ffe08a;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
+    font-size: 16px;
     letter-spacing: 0.04em;
     line-height: 1.2;
     pointer-events: none;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
 .image_sequence_frame_overlay[hidden] {
@@ -49,21 +50,23 @@
 
 .image_sequence_frame_overlay .nle-overlay-label {
     color: #a8abb4;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
 }
 
 .image_sequence_frame_overlay .nle-overlay-frame {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     min-width: 2ch;
+    font-size: 18px;
 }
 
 .image_sequence_frame_overlay .nle-overlay-sep,
 .image_sequence_frame_overlay .nle-overlay-total {
     color: #c5c7ce;
     font-variant-numeric: tabular-nums;
+    font-size: 15px;
 }
 
 .image_sequence_nle {
@@ -384,10 +387,17 @@
 
 #previewimagewrapper.image_sequence_omakase_wrap:fullscreen .image_sequence_frame_overlay,
 #previewimagewrapper.image_sequence_omakase_wrap:-webkit-full-screen .image_sequence_frame_overlay {
-    left: 16px;
-    top: 16px;
-    font-size: 15px;
+    right: 20px;
+    left: auto;
+    top: 20px;
+    font-size: 18px;
+    padding: 0.65rem 1rem;
     z-index: 6;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap:fullscreen .image_sequence_frame_overlay .nle-overlay-frame,
+#previewimagewrapper.image_sequence_omakase_wrap:-webkit-full-screen .image_sequence_frame_overlay .nle-overlay-frame {
+    font-size: 22px;
 }
 
 @media (max-width: 1100px) {
