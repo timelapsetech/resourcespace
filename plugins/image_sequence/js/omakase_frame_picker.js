@@ -777,12 +777,14 @@ export function initImageSequenceOmakase(config) {
                         config.frameCount || 0
                     );
                 }
-                // Seek to saved representative frame for context.
-                const startFrame = clampFrame(config.repFrame, config.frameCount || 0);
+                // Start at the in point (frame 0 when none is set), not the representative frame.
+                const startFrame = clampFrame(config.inFrame, config.frameCount || 0);
                 if (startFrame > 0) {
                     player.player.seekTo(startFrame, MediaTemporalFormat.FRAME_COUNT).subscribe({
                         next: () => updateTimelinePlayhead(startFrame, config.frameCount || 0),
                     });
+                } else {
+                    updateTimelinePlayhead(0, config.frameCount || 0);
                 }
             },
             error: (err) => {
