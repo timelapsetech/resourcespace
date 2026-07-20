@@ -84,6 +84,8 @@ $plugins[] = 'brand_guidelines';
 $plugins[] = 'chroma_theme';
 $plugins[] = 'aria_home';
 $plugins[] = 'asset_rating';
+$plugins[] = 'openai_gpt';
+$plugins[] = 'image_sequence';
 
 $orderbyrating = true;
 $default_display = 'xlthumbs';
