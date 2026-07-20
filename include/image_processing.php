@@ -1204,7 +1204,7 @@ function create_previews($ref, $thumbonly = false, $extension = "jpg", $previewo
 
     $imversion = get_imagemagick_version();
     // Set correct syntax for commands to remove alpha channel
-    if ($imversion[0] >= 7) {
+    if (is_array($imversion) && (int) $imversion[0] >= 7) {
         $alphaoff = "-alpha off";
     } else {
         $alphaoff = "+matte";

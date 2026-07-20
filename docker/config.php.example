@@ -30,10 +30,12 @@ $scramble_key = 'REPLACE_WITH_openssl_rand_hex_16';
 $api_scramble_key = 'REPLACE_WITH_openssl_rand_hex_16';
 $spider_password = 'REPLACE_WITH_SECURE_PASSWORD';
 
-# Utilities are on PATH inside the image — leave unset
-# $imagemagick_path = '/usr/bin';
-# $ffmpeg_path = '/usr/bin';
-# $exiftool_path = '/usr/bin';
+# Required by ResourceSpace (it does not fall back to PATH for these).
+$imagemagick_path = '/usr/bin';
+$ffmpeg_path = '/usr/bin';
+$exiftool_path = '/usr/bin';
+$ghostscript_path = '/usr/bin';
+$ghostscript_executable = 'gs';
 
 # In-container paths (host folders are bind-mounted via .env)
 $syncdir = '/data/syncdir';
