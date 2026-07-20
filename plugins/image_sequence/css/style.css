@@ -15,11 +15,37 @@
 
 .image_sequence_omakase_player {
     --omakase-player-width: 100%;
-    --omakase-player-aspect-ratio: 16 / 9;
+    --omakase-player-max-height: 50vh;
     width: 100%;
-    background: #0b0b0c;
-    border-radius: 4px 4px 0 0;
+    max-height: var(--omakase-player-max-height);
+    margin: 0 auto;
+    padding: 0;
+    background: #000;
+    border-radius: 0;
     overflow: hidden;
+    line-height: 0;
+}
+
+.image_sequence_omakase_player media-theme,
+.image_sequence_omakase_player .omakase-media-theme {
+    display: block;
+    width: 100% !important;
+    max-height: var(--omakase-player-max-height) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: top;
+}
+
+.image_sequence_omakase_player video,
+.image_sequence_omakase_player .omakase-video {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    object-fit: contain !important;
 }
 
 .image_sequence_frame_overlay {

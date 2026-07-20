@@ -1,5 +1,7 @@
 <?php
 
+include_once __DIR__ . '/omakase_polyfill.php';
+
 /**
  * Shared Omakase NLE chrome for Image Sequence + Video resources.
  *
@@ -13,12 +15,13 @@
  *   videoUrl: string,
  *   posterUrl: string,
  *   canEdit: bool,
- *   mode?: string
+ *   mode?: string,
+ *   aspectRatioCss?: string
  * } $opts
  */
 function image_sequence_render_omakase_player(array $opts): void
 {
-    global $lang, $baseurl_short;
+    global $lang, $baseurl_short, $ffmpeg_preview_extension;
 
     $ref = (int) ($opts['ref'] ?? 0);
     $fps = (float) ($opts['fps'] ?? 30);
@@ -27,11 +30,20 @@ function image_sequence_render_omakase_player(array $opts): void
     $in_frame = (int) ($opts['inFrame'] ?? 0);
     $out_frame = (int) ($opts['outFrame'] ?? max(0, $frame_count - 1));
     $can_edit = !empty($opts['canEdit']);
-    $video_url = (string) ($opts['videoUrl'] ?? '');
-    $poster_url = (string) ($opts['posterUrl'] ?? '');
+    $video_url = image_sequence_player_media_url((string) ($opts['videoUrl'] ?? ''));
+    $poster_url = image_sequence_player_media_url((string) ($opts['posterUrl'] ?? ''));
     $mode = (string) ($opts['mode'] ?? 'sequence');
+    $aspect_ratio_css = (string) ($opts['aspectRatioCss'] ?? '');
+    if ($aspect_ratio_css === '' && $ref > 0) {
+        $preview_ext = $ffmpeg_preview_extension ?: 'mp4';
+        $aspect_ratio_css = image_sequence_player_aspect_ratio_css($ref, 'pre', $preview_ext);
+    }
+    if ($aspect_ratio_css === '') {
+        $aspect_ratio_css = '16 / 9';
+    }
 
     $player_element_id = 'image_sequence_omakase_player_' . $ref;
+    $player_style = '--omakase-player-aspect-ratio: ' . $aspect_ratio_css . ';';
 
     $set_rep_url = generateURL($baseurl_short . 'plugins/image_sequence/pages/set_representative_frame.php', [
         'ref' => $ref,
@@ -101,6 +113,7 @@ function image_sequence_render_omakase_player(array $opts): void
         <div
             id="<?php echo escape($player_element_id); ?>"
             class="image_sequence_omakase_player"
+            style="<?php echo escape($player_style); ?>"
         ></div>
         <div
             id="image_sequence_frame_overlay"
@@ -229,6 +242,7 @@ function image_sequence_render_omakase_player(array $opts): void
             <span id="image_sequence_frame_status" class="image_sequence_nle_status"></span>
         </div>
     </div>
+    <?php image_sequence_render_crypto_random_uuid_polyfill_script(); ?>
     <script>
     window.ImageSequenceOmakaseConfig = <?php echo json_encode($omakase_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
     (function () {
@@ -243,8 +257,20 @@ function image_sequence_render_omakase_player(array $opts): void
             var tries = 0;
             var timer = setInterval(function () {
                 tries++;
-                if (bootOmakase() || tries > 40) {
+                if (bootOmakase()) {
                     clearInterval(timer);
+                    return;
+                }
+                if (tries > 40) {
+                    clearInterval(timer);
+                    var status = document.getElementById('image_sequence_frame_status');
+                    if (status) {
+                        status.textContent = <?php echo json_encode(
+                            $lang['image_sequence_player_boot_failed']
+                                ?? 'Preview player did not load. Check the browser console and network tab for the proxy video.'
+                        ); ?>;
+                        status.classList.add('image_sequence_status_error');
+                    }
                 }
             }, 250);
         }

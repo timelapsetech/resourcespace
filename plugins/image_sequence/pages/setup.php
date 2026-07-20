@@ -28,6 +28,8 @@ $page_def[] = config_add_text_input('image_sequence_minimum_adaptive_gap', $lang
 $page_def[] = config_add_text_input('image_sequence_extensions', $lang['image_sequence_extensions']);
 $page_def[] = config_add_text_input('image_sequence_upload_subdir', $lang['image_sequence_upload_subdir']);
 $page_def[] = config_add_text_input('image_sequence_proxy_max_width', $lang['image_sequence_proxy_max_width']);
+$page_def[] = config_add_text_input('image_sequence_proxy_bitrate', $lang['image_sequence_proxy_bitrate']);
+$page_def[] = config_add_text_input('image_sequence_proxy_options', $lang['image_sequence_proxy_options']);
 $page_def[] = config_add_text_input('image_sequence_proxy_max_seconds', $lang['image_sequence_proxy_max_seconds']);
 
 $page_def[] = config_add_single_ftype_select('image_sequence_framecount_field', $lang['image_sequence_framecount_field'], 420);

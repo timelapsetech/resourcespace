@@ -32,6 +32,9 @@ $image_sequence_extensions = 'jpg,jpeg,png,tif,tiff,heic,gif,raw,cr2,crw,nef,arw
 $image_sequence_proxy_max_width = 1280;
 $image_sequence_proxy_max_height = 0; // unused (kept for older configs); proxies are width-limited only
 $image_sequence_proxy_max_seconds = 0;
+# Target video bitrate for sequence proxies (e.g. 2000k ≈ 2 Mbps at 1280px wide).
+$image_sequence_proxy_bitrate = '2000k';
+# Advanced: full FFmpeg encode flags. When non-empty, overrides $image_sequence_proxy_bitrate.
 $image_sequence_proxy_options = '';
 
 # Metadata field refs (0 = unset / auto-created on activate/setup).

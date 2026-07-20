@@ -11,6 +11,10 @@
     jQuery(document).ready(function() {
 
     const container = document.getElementById("hero_banner");
+        if (!container) {
+            return;
+        }
+
         // No login page slideshow images configured
         if (images.length === 0) {
             container.style.backgroundColor= `var(--colour-brand-primary-default)`;

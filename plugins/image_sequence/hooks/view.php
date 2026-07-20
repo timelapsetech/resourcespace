@@ -55,13 +55,7 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
                 : max(0, $frame_count - 1);
 
             $video_url = get_resource_path((int) $ref, false, 'pre', false, $ext, true, 1, false, '', -1, true);
-            if (strpos((string) $video_url, '://') === false) {
-                $video_url = rtrim((string) $baseurl, '/') . '/' . ltrim((string) $video_url, '/');
-            }
             $poster_url = get_resource_path((int) $ref, false, 'pre', false, 'jpg', true, 1, false, '', -1, true);
-            if (strpos((string) $poster_url, '://') === false) {
-                $poster_url = rtrim((string) $baseurl, '/') . '/' . ltrim((string) $poster_url, '/');
-            }
 
             image_sequence_render_omakase_player([
                 'ref' => (int) $ref,
@@ -106,13 +100,7 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
             : ($ffmpeg_preview_extension ?: 'mp4');
 
         $video_url = get_resource_path((int) $ref, false, $videosize, false, $videoext, true, 1, false, '', -1, true);
-        if (strpos((string) $video_url, '://') === false) {
-            $video_url = rtrim((string) $baseurl, '/') . '/' . ltrim((string) $video_url, '/');
-        }
         $poster_url = get_resource_path((int) $ref, false, 'pre', false, 'jpg', true, 1, false, '', -1, true);
-        if (strpos((string) $poster_url, '://') === false) {
-            $poster_url = rtrim((string) $baseurl, '/') . '/' . ltrim((string) $poster_url, '/');
-        }
 
         $marks = image_sequence_video_get_marks((int) $ref);
         $can_edit = get_edit_access((int) $ref);
@@ -128,6 +116,7 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
             'videoUrl' => $video_url,
             'posterUrl' => $poster_url,
             'canEdit' => (bool) $can_edit,
+            'aspectRatioCss' => image_sequence_player_aspect_ratio_css((int) $ref, $videosize, $videoext),
         ]);
 
         return true;

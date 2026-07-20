@@ -2914,12 +2914,42 @@ function image_sequence_default_job_user(): int
 }
 
 /**
+ * FFmpeg encode flags for sequence proxy video (1280px-wide stills need higher bitrate than core video previews).
+ */
+function image_sequence_proxy_encode_options(): string
+{
+    global $image_sequence_proxy_options, $image_sequence_proxy_bitrate;
+
+    $custom = trim((string) $image_sequence_proxy_options);
+    if ($custom !== '') {
+        return $custom;
+    }
+
+    $bitrate = trim((string) ($image_sequence_proxy_bitrate ?? '2000k'));
+    if ($bitrate === '' || $bitrate === '0') {
+        $bitrate = '2000k';
+    } elseif (preg_match('/^\d+$/', $bitrate)) {
+        $bitrate .= 'k';
+    }
+
+    // Target ~2 Mbps average; allow brief peaks for I-frames on detailed stills.
+    $maxrate = $bitrate;
+    if (preg_match('/^(\d+)k$/i', $bitrate, $matches)) {
+        $maxrate = (int) round((int) $matches[1] * 1.25) . 'k';
+    }
+
+    return '-f mp4 -c:v libx264 -b:v ' . $bitrate
+        . ' -maxrate ' . $maxrate
+        . ' -bufsize 4000k -pix_fmt yuv420p -profile:v main -level 4.0 -preset medium -an';
+}
+
+/**
  * Build FFmpeg proxy + poster thumbnails for a sequence resource.
  */
 function image_sequence_generate_proxy(int $ref): bool
 {
-    global $ffmpeg_preview_extension, $ffmpeg_preview_options,
-        $image_sequence_proxy_max_width, $image_sequence_proxy_max_seconds, $image_sequence_proxy_options;
+    global $ffmpeg_preview_extension,
+        $image_sequence_proxy_max_width, $image_sequence_proxy_max_seconds;
 
     $data = image_sequence_get_data($ref);
     if ($data === null) {
@@ -2955,10 +2985,7 @@ function image_sequence_generate_proxy(int $ref): bool
     // Even width for yuv420p / libx264.
     $width -= ($width % 2);
 
-    $encode_opts = trim((string) ($image_sequence_proxy_options !== '' ? $image_sequence_proxy_options : $ffmpeg_preview_options));
-    if ($encode_opts === '') {
-        $encode_opts = '-f mp4 -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3 -an';
-    }
+    $encode_opts = image_sequence_proxy_encode_options();
 
     $duration_limit = (int) $image_sequence_proxy_max_seconds;
     // Fit inside max width; keep source aspect ratio (no crop, no letter/pillar box).

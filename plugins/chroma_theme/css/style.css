@@ -422,6 +422,7 @@ a.Primary,
 .RecordPanel {
     padding: 0 !important;
     background: transparent !important;
+    position: relative;
 }
 
 .RecordPanel .RecordHeader {
@@ -491,8 +492,8 @@ a.Primary,
 }
 
 #previewimagewrapper .Picture,
-#previewimagewrapper img,
-#previewimagewrapper video,
+#previewimagewrapper:not(.image_sequence_omakase_wrap) img,
+#previewimagewrapper:not(.image_sequence_omakase_wrap) video,
 #previewimage {
     max-width: 100% !important;
     max-height: min(72vh, 820px) !important;
@@ -515,7 +516,7 @@ a.Primary,
     min-width: 0 !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 0 8px;
+    padding: 52px 0 0;
     background: #0b0b0c;
 }
 
@@ -523,16 +524,35 @@ a.Primary,
     flex: 0 0 auto;
     width: 100% !important;
     max-width: none !important;
+    max-height: 50vh !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
     border-radius: 0 !important;
     --omakase-player-width: 100%;
+    --omakase-player-max-height: 50vh;
+}
+
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player media-theme,
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player .omakase-media-theme {
+    display: block !important;
+    width: 100% !important;
+    max-height: 50vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 #previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player video,
 #previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player canvas,
-#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player .video-js,
-#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player > * {
-    max-width: 100% !important;
-    max-height: min(68vh, 760px) !important;
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player .omakase-video,
+#previewimagewrapper.image_sequence_omakase_wrap .image_sequence_omakase_player .video-js {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    object-fit: contain !important;
 }
 
 #previewimagewrapper.image_sequence_omakase_wrap .image_sequence_nle {

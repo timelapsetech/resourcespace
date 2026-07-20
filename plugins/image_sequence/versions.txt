@@ -22,4 +22,5 @@
 1.17 Ingest: one folder = one sequence (no auto-split); EXIF-only first/last + cadence samples (never mtime); manual “Auto-detect and split shots” on view + CLI
 1.17 Fix multi-day timeline: always use EXIF for first/last/duration (mtime can collapse days→minutes); de-dupe SMB listing repeats; repair_timelines CLI
 1.18 Proxy: max 1280px wide, preserve source aspect (no pad/crop letterboxing)
+1.19 Proxy encode: dedicated ~2 Mbps (2000k) bitrate for 1280px sequences instead of core video preview settings
 

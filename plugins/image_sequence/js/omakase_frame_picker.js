@@ -320,6 +320,60 @@ function getPlayerWrap() {
     return document.querySelector('#previewimagewrapper.image_sequence_omakase_wrap');
 }
 
+function getUiScroller() {
+    return document.getElementById('UICenter');
+}
+
+function bindAudioUnlockOnGesture() {
+    if (window.__imgseqAudioUnlockBound) {
+        return;
+    }
+    window.__imgseqAudioUnlockBound = true;
+    const unlock = () => {
+        if (typeof window.imageSequenceResumeAudioContexts === 'function') {
+            window.imageSequenceResumeAudioContexts();
+        }
+    };
+    document.addEventListener('click', unlock, {once: false, passive: true});
+    document.addEventListener('keydown', unlock, {once: false, passive: true});
+}
+
+/**
+ * After AJAX prev/next navigation CentralSpace keeps its scroll position, which can leave
+ * the player stage above the visible #UICenter viewport (NLE controls still visible below).
+ */
+function ensurePlayerStageVisible() {
+    const wrap = getPlayerWrap();
+    if (!wrap) {
+        return;
+    }
+    const scroller = getUiScroller();
+    const headerClearance = 56;
+    const wrapRect = wrap.getBoundingClientRect();
+    if (scroller) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const player = wrap.querySelector('.image_sequence_omakase_player');
+        const targetRect = player ? player.getBoundingClientRect() : wrapRect;
+        if (targetRect.top < scrollerRect.top + headerClearance) {
+            scroller.scrollTop += targetRect.top - scrollerRect.top - headerClearance;
+        }
+        return;
+    }
+    if (wrapRect.top < headerClearance) {
+        wrap.scrollIntoView({block: 'start', behavior: 'instant'});
+    }
+}
+
+function playerLooksReady(host) {
+    if (!host) {
+        return false;
+    }
+    if (host.querySelector('video, media-theme, .omakase-media-theme')) {
+        return true;
+    }
+    return host.childNodes.length > 0 && host.offsetHeight > 40;
+}
+
 function setFullscreenUi(isFullscreen) {
     const btn = document.getElementById('image_sequence_fullscreen');
     if (!btn) {
@@ -725,7 +779,8 @@ export function initImageSequenceOmakase(config) {
     }
 
     const key = config.playerElementId + '|' + config.videoUrl + '|' + String(config.ref || '');
-    if (boundConfigKey === key && activePlayer && host.childNodes.length > 0) {
+    if (boundConfigKey === key && activePlayer && playerLooksReady(host)) {
+        ensurePlayerStageVisible();
         return;
     }
 
@@ -743,6 +798,7 @@ export function initImageSequenceOmakase(config) {
     activePlayer = player;
     boundConfigKey = key;
     window.imageSequenceOmakasePlayer = player;
+    ensurePlayerStageVisible();
 
     const loadOptions = {
         frameRate: config.fps || 30,
@@ -786,10 +842,12 @@ export function initImageSequenceOmakase(config) {
                 } else {
                     updateTimelinePlayhead(0, config.frameCount || 0);
                 }
+                ensurePlayerStageVisible();
             },
             error: (err) => {
                 console.error('Image Sequence Omakase load failed', err);
                 setStatus((config.lang && config.lang.loadFailed) || 'Could not load sequence preview player.', true);
+                ensurePlayerStageVisible();
             },
         })
     );
@@ -804,14 +862,22 @@ window.ImageSequenceOmakase = {
     destroy: destroyImageSequenceOmakase,
 };
 
+bindAudioUnlockOnGesture();
+
 if (typeof jQuery !== 'undefined') {
+    const onCentralSpaceLoaded = function () {
+        if (window.ImageSequenceOmakaseConfig && document.getElementById(window.ImageSequenceOmakaseConfig.playerElementId)) {
+            initImageSequenceOmakase(window.ImageSequenceOmakaseConfig);
+        } else if (!document.querySelector('.image_sequence_omakase_player')) {
+            destroyImageSequenceOmakase();
+        }
+    };
+
     jQuery(document)
         .off('CentralSpaceLoaded.imgseqOmakase')
-        .on('CentralSpaceLoaded.imgseqOmakase', function () {
-            if (window.ImageSequenceOmakaseConfig && document.getElementById(window.ImageSequenceOmakaseConfig.playerElementId)) {
-                initImageSequenceOmakase(window.ImageSequenceOmakaseConfig);
-            } else if (!document.querySelector('.image_sequence_omakase_player')) {
-                destroyImageSequenceOmakase();
-            }
-        });
+        .on('CentralSpaceLoaded.imgseqOmakase', onCentralSpaceLoaded);
+
+    jQuery('#CentralSpace')
+        .off('CentralSpaceLoaded.imgseqOmakase')
+        .on('CentralSpaceLoaded.imgseqOmakase', onCentralSpaceLoaded);
 }

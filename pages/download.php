@@ -390,8 +390,9 @@ $seek_start = (empty($seek_start) || $seek_end < abs(intval($seek_start))) ? 0 :
 debug("PAGES/DOWNLOAD.PHP: \$seek_start = {$seek_start}");
 debug("PAGES/DOWNLOAD.PHP: \$seek_end = {$seek_end}");
 
-// Only send partial content header if downloading a piece of the file (IE workaround)
-if (0 < $seek_start || $seek_end < ($file_size - 1)) {
+$is_partial_response = $range_requested || (0 < $seek_start) || ($seek_end < ($file_size - 1));
+
+if ($is_partial_response) {
     header('HTTP/1.1 206 Partial Content');
     header("Content-Range: bytes {$seek_start}-{$seek_end}/{$file_size}");
     header('Content-Length: ' . ($seek_end - $seek_start + 1));
@@ -402,10 +403,6 @@ if (0 < $seek_start || $seek_end < ($file_size - 1)) {
     $total_to_send = $seek_end - $seek_start + 1;
 } else {
     header("Content-Length: {$file_size}");
-    if ($range_requested) {
-        // Safari seems to require this
-        header("Content-Range: bytes {$seek_start}-{$seek_end}/{$file_size}");
-    }
     debug("PAGES/DOWNLOAD.PHP: Content-Length: {$file_size}");
 
     $total_to_send = $file_size;

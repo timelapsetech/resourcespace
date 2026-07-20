@@ -1,6 +1,7 @@
 <?php
 
 include_once __DIR__ . '/../include/image_sequence_functions.php';
+include_once __DIR__ . '/../include/omakase_polyfill.php';
 
 function HookImage_sequenceAllInitialise()
 {
@@ -27,6 +28,7 @@ function HookImage_sequenceAllAdditionalheaderjs()
         . urlencode((string) $css_reload_key);
     ?>
     <link rel="stylesheet" href="<?php echo escape($omakase_css); ?>" />
+    <?php image_sequence_render_crypto_random_uuid_polyfill_script(); ?>
     <script type="importmap">
     {
       "imports": {

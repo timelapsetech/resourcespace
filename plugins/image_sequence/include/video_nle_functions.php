@@ -190,6 +190,60 @@ function image_sequence_video_playback_path(array $resource): string
 }
 
 /**
+ * Same-origin relative URL for Omakase (avoids localhost vs LAN $baseurl mismatches).
+ */
+function image_sequence_player_media_url(string $url): string
+{
+    global $baseurl;
+
+    if ($url === '') {
+        return '';
+    }
+
+    $base = rtrim((string) $baseurl, '/');
+    if ($base !== '' && str_starts_with($url, $base)) {
+        $relative = substr($url, strlen($base));
+        return $relative !== '' ? $relative : '/';
+    }
+
+    $parts = parse_url($url);
+    if (!empty($parts['path'])) {
+        return $parts['path'] . (isset($parts['query']) ? '?' . $parts['query'] : '');
+    }
+
+    return $url;
+}
+
+/**
+ * CSS aspect-ratio value from the on-disk preview/proxy (e.g. "1280 / 854" for 3:2).
+ */
+function image_sequence_player_aspect_ratio_css(int $ref, string $size = 'pre', string $ext = 'mp4'): string
+{
+    $path = get_resource_path($ref, true, $size, false, $ext);
+    if (!is_string($path) || !is_file($path)) {
+        return '16 / 9';
+    }
+
+    $info = get_video_info($path);
+    if (!is_array($info) || empty($info['streams']) || !is_array($info['streams'])) {
+        return '16 / 9';
+    }
+
+    foreach ($info['streams'] as $stream) {
+        if (($stream['codec_type'] ?? '') !== 'video') {
+            continue;
+        }
+        $width = (int) ($stream['width'] ?? 0);
+        $height = (int) ($stream['height'] ?? 0);
+        if ($width > 0 && $height > 0) {
+            return $width . ' / ' . $height;
+        }
+    }
+
+    return '16 / 9';
+}
+
+/**
  * Probe fps / duration / frame count for a video resource.
  *
  * @return array{fps: float, duration: float, frame_count: int}|null
