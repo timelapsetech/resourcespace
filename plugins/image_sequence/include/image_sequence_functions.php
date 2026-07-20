@@ -2940,7 +2940,18 @@ function image_sequence_proxy_encode_options(): string
 
     return '-f mp4 -c:v libx264 -b:v ' . $bitrate
         . ' -maxrate ' . $maxrate
-        . ' -bufsize 4000k -pix_fmt yuv420p -profile:v main -level 4.0 -preset medium -an';
+        . ' -bufsize 4000k -pix_fmt yuv420p -profile:v main -level 4.0 -preset medium -an -movflags +faststart';
+}
+
+/**
+ * JPEG quality for ImageMagick on Ubuntu IM6: `-quality N` is broken (treats N as a filename).
+ * Use `-define jpeg:quality=N` instead.
+ */
+function image_sequence_im_jpeg_quality_arg(int $quality = 80): string
+{
+    $quality = max(1, min(100, $quality));
+
+    return '-define jpeg:quality=' . $quality;
 }
 
 /**
@@ -2997,7 +3008,7 @@ function image_sequence_generate_proxy(int $ref): bool
         $folder_abs = image_sequence_relative_to_absolute((string) $data['folder_path']);
         if ($pattern !== '' && $folder_abs !== null && (int) $data['start_number'] > 0) {
             $input = rtrim($folder_abs, '/') . '/' . $pattern;
-            $cmd = $ffmpeg . ' -y -framerate %%FPS%% -start_number %%START%% -i %%INPUT%% '
+            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -framerate %%FPS%% -start_number %%START%% -i %%INPUT%% '
                 . $encode_opts . ' -vf %%SCALE%%';
             $params = [
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
@@ -3028,7 +3039,8 @@ function image_sequence_generate_proxy(int $ref): bool
             fwrite($fh, "file '{$last}'\n");
             fclose($fh);
 
-            $cmd = $ffmpeg . ' -y -f concat -safe 0 -r %%FPS%% -i %%LIST%% ' . $encode_opts . ' -vf %%SCALE%%';
+            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -f concat -safe 0 -r %%FPS%% -i %%LIST%% '
+                . $encode_opts . ' -vf %%SCALE%%';
             $params = [
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
                 '%%LIST%%' => new CommandPlaceholderArg($list_file, 'is_valid_rs_path'),
@@ -3053,7 +3065,7 @@ function image_sequence_generate_proxy(int $ref): bool
         $poster_jpg = get_resource_path($ref, true, 'pre', true, 'jpg');
         try {
             run_command(
-                $ffmpeg . ' -y -i %%SRC%% -frames:v 1 %%DST%%',
+                $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2 %%DST%%',
                 false,
                 [
                     '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'image_sequence_is_valid_shell_path'),
@@ -3068,8 +3080,9 @@ function image_sequence_generate_proxy(int $ref): bool
             }
         }
 
-        if (file_exists($poster_jpg)) {
-            create_previews($ref, false, 'jpg', false, true);
+        if (file_exists($poster_jpg) && filesize($poster_jpg) > 0) {
+            // Avoid core create_previews() here — Ubuntu IM6 breaks on `-quality N` (opens "N" as a file).
+            image_sequence_derive_thumbs_from_poster($ref, $poster_jpg);
             $has_poster = true;
         }
 
@@ -3154,6 +3167,7 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
     $written = 0;
     $ffmpeg = get_utility_path('ffmpeg');
     $convert = get_utility_path('im-convert');
+    $jpeg_q = image_sequence_im_jpeg_quality_arg(80);
 
     foreach ($indices as $i => $frame_index) {
         $src = $paths[$frame_index] ?? '';
@@ -3163,10 +3177,27 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
         $dest = str_replace('snapshot', 'snapshot_' . ($i + 1), $template);
         $ok = false;
 
-        if ($convert !== false) {
+        // Prefer FFmpeg: reliable on large stills; avoids Ubuntu IM6 `-quality` bug.
+        if ($ffmpeg !== false) {
             try {
                 run_command(
-                    $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% -quality 80 %%DST%%',
+                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
+                    false,
+                    [
+                        '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
+                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                    ]
+                );
+                $ok = is_file($dest) && filesize($dest) > 0;
+            } catch (Throwable $e) {
+                debug('image_sequence_write_snapshots_from_stills ffmpeg: ' . $e->getMessage());
+            }
+        }
+
+        if (!$ok && $convert !== false) {
+            try {
+                run_command(
+                    $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% ' . $jpeg_q . ' %%DST%%',
                     false,
                     [
                         '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
@@ -3177,22 +3208,6 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
                 $ok = is_file($dest) && filesize($dest) > 0;
             } catch (Throwable $e) {
                 debug('image_sequence_write_snapshots_from_stills convert: ' . $e->getMessage());
-            }
-        }
-
-        if (!$ok && $ffmpeg !== false) {
-            try {
-                run_command(
-                    $ffmpeg . ' -y -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
-                    false,
-                    [
-                        '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
-                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
-                    ]
-                );
-                $ok = is_file($dest) && filesize($dest) > 0;
-            } catch (Throwable $e) {
-                debug('image_sequence_write_snapshots_from_stills ffmpeg: ' . $e->getMessage());
             }
         }
 
@@ -3249,7 +3264,7 @@ function image_sequence_write_snapshots_from_video(int $ref, string $video_path,
         $dest = str_replace('snapshot', 'snapshot_' . $i, $template);
         try {
             run_command(
-                $ffmpeg . ' -y -ss %%TIME%% -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
+                $ffmpeg . ' -hide_banner -loglevel error -y -ss %%TIME%% -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
                 false,
                 [
                     '%%TIME%%' => new CommandPlaceholderArg(sprintf('%.3F', $t), [CommandPlaceholderArg::class, 'alwaysValid']),
@@ -3542,11 +3557,13 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
 
     // Prefer ImageMagick: one decode, sensible preview size, then derive thumbs.
     // Geometry must be a placeholder — an unquoted ">" is a shell redirect.
+    // Use -define jpeg:quality (not -quality): Ubuntu IM6 treats `-quality N` as a filename.
     $convert = get_utility_path('im-convert');
     if ($convert !== false) {
         try {
             run_command(
-                $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% -quality 85 %%DST%%',
+                $convert . ' %%SRC%%[0] -auto-orient -resize %%GEOM%% '
+                    . image_sequence_im_jpeg_quality_arg(85) . ' %%DST%%',
                 false,
                 [
                     '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
@@ -3569,7 +3586,7 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
         if ($ffmpeg !== false) {
             try {
                 run_command(
-                    $ffmpeg . ' -y -i %%SRC%% -frames:v 1 -update 1 %%DST%%',
+                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2 -update 1 %%DST%%',
                     false,
                     [
                         '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
@@ -3587,18 +3604,43 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
         return;
     }
 
+    image_sequence_derive_thumbs_from_poster($ref, $poster_jpg);
+
+    // Bump file_modified so download cache-busting picks up the new posters.
+    ps_query(
+        "UPDATE resource SET has_image = 1, preview_extension = 'jpg', file_modified = NOW() WHERE ref = ?",
+        ['i', $ref]
+    );
+}
+
+/**
+ * Derive scr/thm/col/tiny JPEGs from an existing poster without core create_previews().
+ * Avoids Ubuntu ImageMagick's broken `-quality N` (opens "N" as an input file).
+ */
+function image_sequence_derive_thumbs_from_poster(int $ref, string $poster_jpg): void
+{
+    if ($ref <= 0 || !is_file($poster_jpg)) {
+        return;
+    }
+
+    $convert = get_utility_path('im-convert');
+    $ffmpeg = get_utility_path('ffmpeg');
+    $jpeg_q = image_sequence_im_jpeg_quality_arg(80);
     $thumb_specs = [
         'scr' => '1280x1280',
         'thm' => '250x250',
         'col' => '100x100',
         'tiny' => '75x75',
     ];
+
     foreach ($thumb_specs as $size => $geometry) {
         $dest = get_resource_path($ref, true, $size, true, 'jpg');
+        $ok = false;
+
         if ($convert !== false) {
             try {
                 run_command(
-                    $convert . ' %%SRC%%[0] -auto-orient -thumbnail %%GEOM%% -quality 80 %%DST%%',
+                    $convert . ' %%SRC%%[0] -auto-orient -thumbnail %%GEOM%% ' . $jpeg_q . ' %%DST%%',
                     false,
                     [
                         '%%SRC%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
@@ -3606,19 +3648,35 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
                         '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
                     ]
                 );
-                continue;
+                $ok = is_file($dest) && filesize($dest) > 0;
             } catch (Throwable $e) {
-                debug('image_sequence_refresh_poster_from_still thumb: ' . $e->getMessage());
+                debug('image_sequence_derive_thumbs_from_poster convert: ' . $e->getMessage());
             }
         }
-        @copy($poster_jpg, $dest);
-    }
 
-    // Bump file_modified so download cache-busting picks up the new posters.
-    ps_query(
-        "UPDATE resource SET has_image = 1, preview_extension = 'jpg', file_modified = NOW() WHERE ref = ?",
-        ['i', $ref]
-    );
+        if (!$ok && $ffmpeg !== false) {
+            $dims = explode('x', $geometry);
+            $w = (int) ($dims[0] ?? 250);
+            try {
+                run_command(
+                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -vf scale=%%W%%:-2 -q:v 3 -update 1 %%DST%%',
+                    false,
+                    [
+                        '%%SRC%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
+                        '%%W%%' => new CommandPlaceholderArg((string) $w, 'is_positive_int_loose'),
+                        '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
+                    ]
+                );
+                $ok = is_file($dest) && filesize($dest) > 0;
+            } catch (Throwable $e) {
+                debug('image_sequence_derive_thumbs_from_poster ffmpeg: ' . $e->getMessage());
+            }
+        }
+
+        if (!$ok) {
+            @copy($poster_jpg, $dest);
+        }
+    }
 }
 
 /**
