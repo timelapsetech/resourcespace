@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
-# Export AI-wired metadata field definitions from a running ResourceSpace DB
-# so a fresh install can be reconfigured (match by field shortname, not ref).
+# Export AI-wired metadata field definitions from a running ResourceSpace
+# instance (match by field shortname, not ref).
 #
-# Usage (from this Mac / test DB):
+# Usage:
 #   ./docker/scripts/export_ai_field_config.sh > ai-fields.json
 #
-# On the new Mac, use Admin UI to create missing fields, then paste prompts
-# from the JSON — or ask for an import helper if you prefer automated apply.
+# Uses the app container + PHP so prompts with quotes/newlines are escaped correctly.
 
 set -euo pipefail
 
-MYSQL_CONTAINER="${MYSQL_CONTAINER:-rs-mysql}"
-MYSQL_USER="${MYSQL_USER:-resourcespace}"
-MYSQL_PASSWORD="${MYSQL_PASSWORD:-resourcespace}"
-MYSQL_DB="${MYSQL_DB:-resourcespace}"
+APP_CONTAINER="${APP_CONTAINER:-resourcespace}"
 
-docker exec "$MYSQL_CONTAINER" mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DB" -N -B -e "
-SELECT JSON_ARRAYAGG(
-  JSON_OBJECT(
-    'name', name,
-    'title', title,
-    'type', type,
-    'openai_gpt_input_field', openai_gpt_input_field,
-    'openai_gpt_prompt', openai_gpt_prompt
-  )
-)
-FROM resource_type_field
-WHERE openai_gpt_prompt IS NOT NULL AND openai_gpt_prompt != '';
-"
+docker exec "$APP_CONTAINER" php -r '
+include "/var/www/html/include/boot.php";
+$rows = ps_query(
+    "SELECT name, title, type, openai_gpt_input_field, openai_gpt_prompt
+     FROM resource_type_field
+     WHERE openai_gpt_prompt IS NOT NULL AND openai_gpt_prompt <> \"\"
+     ORDER BY name"
+);
+$out = [];
+foreach ($rows as $r) {
+    $out[] = [
+        "name" => $r["name"],
+        "title" => $r["title"],
+        "type" => (int) $r["type"],
+        "openai_gpt_input_field" => (int) $r["openai_gpt_input_field"],
+        "openai_gpt_prompt" => $r["openai_gpt_prompt"],
+    ];
+}
+echo json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+'

@@ -11,6 +11,7 @@ plugins/image_sequence/config/config.php
 .env
 docker/db.env
 docker/config.php
+ai-fields.json
 
 # Runtime storage
 filestore/
