@@ -10,10 +10,12 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     apache2 \
+    composer \
     cron \
     curl \
     ffmpeg \
     ghostscript \
+    git \
     imagemagick \
     libapache2-mod-php \
     libimage-exiftool-perl \
@@ -27,7 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     php-mysql \
     php-xml \
     php-zip \
-    composer \
     unzip \
     wget \
     && apt-get clean \
@@ -59,7 +60,7 @@ WORKDIR /var/www/html
 # App code from this repo (plugins + StaticSync hook included)
 COPY --chown=www-data:www-data . /var/www/html/
 
-RUN composer install --no-dev --optimize-autoloader --no-interaction \
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
     && mkdir -p /var/www/html/filestore /data/syncdir /data/originals \
     && if [ ! -f plugins/image_sequence/config/config.php ] \
          && [ -f plugins/image_sequence/config/config.php.example ]; then \

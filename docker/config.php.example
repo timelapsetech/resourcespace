@@ -19,7 +19,7 @@ $read_only_db_username = 'resourcespace';
 $read_only_db_password = 'change-me-app';
 
 # Public URL as browsers reach this Mac (change if using LAN IP / HTTPS)
-$baseurl = 'http://localhost:8080';
+$baseurl = 'http://localhost:8089';
 
 $email_notify = 'admin@localhost';
 $email_from = 'admin@localhost';

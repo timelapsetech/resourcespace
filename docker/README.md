@@ -85,6 +85,15 @@ docker compose ps
 
 Open `http://localhost:8080` (or your `RS_HTTP_PORT`).
 
+### Nginx Proxy Manager (`proxied` network)
+
+Compose joins the existing external Docker network named `proxied` (same network NPM uses). MariaDB stays on the internal `backend` network only.
+
+1. Ensure the network exists: `docker network ls | grep proxied` (create it if NPM hasn’t already).
+2. In NPM, add a proxy host → forward to `resourcespace:80` (container name + port 80).
+3. Set `$baseurl` in `docker/config.php` to the public URL NPM serves (e.g. `https://dam.example.com`) — no trailing slash.
+4. Optionally comment out the `ports:` mapping in `docker-compose.yml` once NPM is the only entry point.
+
 ### First-run web setup
 
 If the database is empty, ResourceSpace shows the setup wizard:
