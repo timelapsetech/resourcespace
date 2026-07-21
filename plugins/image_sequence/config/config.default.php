@@ -20,6 +20,15 @@ $image_sequence_upload_subdir = 'image_sequences';
 # Ingest does NOT auto-split by default — one folder = one continuous sequence.
 $image_sequence_auto_split = false;
 $image_sequence_min_frames = 10;
+
+# Default representative frame chosen on ingest (0-based index). Falls back to the
+# first frame (0) when the sequence has fewer frames than this index. Users can pick
+# a different frame later from the Omakase player.
+$image_sequence_default_rep_frame = 42;
+
+# On ingest, automatically run AI metadata enrichment against the default
+# representative frame (offline job). Set false to require a manual rep-frame pick.
+$image_sequence_ai_on_ingest = true;
 $image_sequence_min_files_for_cadence = 3;
 $image_sequence_max_cadence_sample = 180;
 $image_sequence_minimum_session_gap = 600;

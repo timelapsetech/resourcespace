@@ -2114,7 +2114,8 @@ function image_sequence_create_photo_resource(string $absolute_path, int $create
  */
 function image_sequence_create_sequence_resource(array $segment, ?float $cadence, int $created_by = 0, ?string $sequence_code = null, bool $match_exact_members = false): int
 {
-    global $image_sequence_restype, $image_sequence_fps_default, $lang;
+    global $image_sequence_restype, $image_sequence_fps_default, $lang,
+        $image_sequence_default_rep_frame, $image_sequence_ai_on_ingest;
 
     if ($segment === [] || (int) $image_sequence_restype <= 0) {
         return 0;
@@ -2156,6 +2157,11 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
     $duration = $frame_count / max($fps, 0.0001);
     $extension = strtolower(pathinfo($member_basenames[0], PATHINFO_EXTENSION));
     $pattern_info = image_sequence_infer_frame_pattern($member_basenames);
+
+    // Default representative frame (0-based). Falls back to the first frame when the
+    // sequence is too short to contain the configured index. Users can change it later.
+    $default_rep = (int) ($image_sequence_default_rep_frame ?? 42);
+    $rep_frame = ($default_rep > 0 && $frame_count > $default_rep) ? $default_rep : 0;
 
     $ref = create_resource(
         (int) $image_sequence_restype,
@@ -2209,7 +2215,7 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
             'd', $fps,
             'd', $duration,
             'd', $cadence,
-            'i', 0,
+            'i', $rep_frame,
             'i', 0,
             'i', max(0, $frame_count - 1),
             's', 'pending',
@@ -2224,7 +2230,7 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         'folder' => $folder_meta['folder_name'],
         'folder_path' => $folder_meta['folder_path'],
         'sequence_code' => $resolved_sequence_code,
-        'representative_frame' => 0,
+        'representative_frame' => $rep_frame,
         'in_frame' => 0,
         'out_frame' => max(0, $frame_count - 1),
     ]);
@@ -2239,15 +2245,21 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         // Sparse EXIF: first/last + cadence samples only (never mtime).
         image_sequence_apply_timeline_from_dated_segment($ref, $segment, $cadence);
         if ($member_paths !== []) {
-            image_sequence_extract_frame_metadata($ref, $member_paths[0]);
-            // Default representative still (frame 0) into managed storage.
-            image_sequence_save_representative_alt_file($ref, $member_paths[0], 0);
+            // EXIF + managed representative still from the default representative frame.
+            $rep_path = $member_paths[$rep_frame] ?? $member_paths[0];
+            image_sequence_extract_frame_metadata($ref, $rep_path);
+            image_sequence_save_representative_alt_file($ref, $rep_path, $rep_frame);
         }
     } catch (Throwable $e) {
         debug('image_sequence_create_sequence_resource timeline/metadata: ' . $e->getMessage());
     }
 
     image_sequence_queue_proxy_job($ref);
+
+    // Auto-enrich metadata from the representative frame (offline job) unless disabled.
+    if (!isset($image_sequence_ai_on_ingest) || $image_sequence_ai_on_ingest) {
+        image_sequence_queue_ai_metadata($ref, false);
+    }
 
     return (int) $ref;
 }
