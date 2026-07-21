@@ -173,7 +173,8 @@ function aria_home_render_card(array $resource, ?bool $span = null): void
 function aria_home_render_page(
     string $kind = 'all',
     int $collection = 0,
-    array $active_tags = []
+    array $active_tags = [],
+    string $search = ''
 ): void {
     global $baseurl, $baseurl_short, $lang, $aria_home_per_page, $aria_home_hero_limit,
         $aria_home_hero_interval_ms;
@@ -181,8 +182,9 @@ function aria_home_render_page(
     $per_page = (int) ($aria_home_per_page ?: 24);
     $hero_limit = max(1, (int) ($aria_home_hero_limit ?: 8));
     $hero_interval = max(3000, (int) ($aria_home_hero_interval_ms ?: 7000));
+    $search = trim($search);
     $featured_list = aria_home_featured_resources($hero_limit);
-    $browse = aria_home_browse($kind, $collection, $active_tags, 0, $per_page);
+    $browse = aria_home_browse($kind, $collection, $active_tags, 0, $per_page, $search);
     $featured_tags = aria_home_featured_tags();
     $facet_sections = aria_home_sidebar_sections();
     $ids = aria_home_featured_ids();
@@ -199,6 +201,7 @@ function aria_home_render_page(
          data-kind="<?php echo escape($kind); ?>"
          data-collection="<?php echo (int) $collection; ?>"
          data-tags="<?php echo escape(implode(',', $active_tags)); ?>"
+         data-search="<?php echo escape($search); ?>"
          data-offset="<?php echo (int) $shown; ?>"
          data-per-page="<?php echo (int) $per_page; ?>"
          data-total="<?php echo (int) $browse['total']; ?>">
@@ -324,6 +327,16 @@ function aria_home_render_page(
                 </div>
 
                 <div class="aria-toolbar-meta">
+                    <form class="aria-search" role="search" onsubmit="return false;">
+                        <i class="icon-search" aria-hidden="true"></i>
+                        <input type="search"
+                               id="aria-search-input"
+                               class="aria-search-input"
+                               value="<?php echo escape($search); ?>"
+                               placeholder="<?php echo escape($lang['aria_home_search_placeholder'] ?? 'Search assets'); ?>"
+                               aria-label="<?php echo escape($lang['aria_home_search_placeholder'] ?? 'Search assets'); ?>"
+                               autocomplete="off">
+                    </form>
                     <span class="aria-asset-count">
                         <span id="aria-asset-count-num"><?php echo (int) $browse['total']; ?></span>
                         <?php echo escape($lang['aria_home_assets'] ?? 'assets'); ?>

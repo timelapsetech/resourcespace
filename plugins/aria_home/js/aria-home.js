@@ -21,6 +21,7 @@
             kind: el.getAttribute("data-kind") || "all",
             collection: parseInt(el.getAttribute("data-collection") || "0", 10) || 0,
             tags: tags,
+            search: el.getAttribute("data-search") || "",
             offset: parseInt(el.getAttribute("data-offset") || "0", 10) || 0,
             perPage: parseInt(el.getAttribute("data-per-page") || "12", 10) || 12,
             total: parseInt(el.getAttribute("data-total") || "0", 10) || 0,
@@ -31,6 +32,7 @@
         el.setAttribute("data-kind", state.kind);
         el.setAttribute("data-collection", String(state.collection));
         el.setAttribute("data-tags", state.tags.join(","));
+        el.setAttribute("data-search", state.search || "");
         el.setAttribute("data-offset", String(state.offset));
         el.setAttribute("data-per-page", String(state.perPage));
         el.setAttribute("data-total", String(state.total));
@@ -116,6 +118,7 @@
             kind: state.kind,
             collection: String(state.collection),
             tags: state.tags.join(","),
+            search: state.search || "",
             offset: String(requestOffset),
         });
 
@@ -585,6 +588,37 @@
             setActiveButtons(el, state);
             refresh(el);
         });
+
+        var searchInput = el.querySelector("#aria-search-input");
+        if (searchInput) {
+            var searchTimer = null;
+            var runSearch = function () {
+                var state = stateFromDom(el);
+                var value = (searchInput.value || "").trim();
+                if (value === state.search) {
+                    return;
+                }
+                state.search = value;
+                state.offset = 0;
+                writeState(el, state);
+                refresh(el);
+            };
+            searchInput.addEventListener("input", function () {
+                if (searchTimer) {
+                    window.clearTimeout(searchTimer);
+                }
+                searchTimer = window.setTimeout(runSearch, 300);
+            });
+            searchInput.addEventListener("keydown", function (e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (searchTimer) {
+                        window.clearTimeout(searchTimer);
+                    }
+                    runSearch();
+                }
+            });
+        }
 
         bindHeroCarousel(el.querySelector("[data-hero-carousel]"));
     }

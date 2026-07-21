@@ -394,9 +394,11 @@ function aria_home_browse(
     int $collection = 0,
     array $tag_nodes = [],
     int $offset = 0,
-    int $per_page = 24
+    int $per_page = 24,
+    string $keywords = ''
 ): array {
     $restypes = aria_home_restypes_for_kind($kind);
+    $keywords = trim($keywords);
     $search = '';
 
     if ($collection > 0) {
@@ -414,18 +416,18 @@ function aria_home_browse(
                 static fn ($r) => in_array((int) ($r['resource_type'] ?? 0), $allowed, true)
             ));
         }
-        if ($tag_nodes !== []) {
-            // Narrow collection results with a second search of tagged refs
-            $tag_search = aria_home_build_search('', $tag_nodes);
-            $tagged = do_search($tag_search, $restypes, 'date', 0, -1, 'desc');
-            $tagged_rows = is_array($tagged) ? $tagged : [];
-            if (isset($tagged_rows['data']) && is_array($tagged_rows['data'])) {
-                $tagged_rows = $tagged_rows['data'];
+        // Narrow collection results by free-text keywords and/or featured tags.
+        $narrow = aria_home_build_search($keywords, $tag_nodes);
+        if ($narrow !== '') {
+            $narrowed = do_search($narrow, $restypes, 'date', 0, -1, 'desc');
+            $narrowed_rows = is_array($narrowed) ? $narrowed : [];
+            if (isset($narrowed_rows['data']) && is_array($narrowed_rows['data'])) {
+                $narrowed_rows = $narrowed_rows['data'];
             }
-            $tagged_refs = array_column($tagged_rows, 'ref');
+            $narrowed_refs = array_column($narrowed_rows, 'ref');
             $rows = array_values(array_filter(
                 $rows,
-                static fn ($r) => in_array((int) ($r['ref'] ?? 0), $tagged_refs, true)
+                static fn ($r) => in_array((int) ($r['ref'] ?? 0), $narrowed_refs, true)
             ));
         }
         $total = count($rows);
@@ -433,7 +435,7 @@ function aria_home_browse(
         return ['total' => $total, 'data' => $data];
     }
 
-    $search = aria_home_build_search('', $tag_nodes);
+    $search = aria_home_build_search($keywords, $tag_nodes);
     $result = do_search($search, $restypes, 'date', 0, [$offset, $per_page], 'desc');
 
     if (is_array($result) && isset($result['data'])) {

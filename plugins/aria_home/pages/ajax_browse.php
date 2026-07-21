@@ -26,8 +26,9 @@ if ($tags_raw !== '') {
 }
 $offset = max(0, (int) getval('offset', 0));
 $per_page = max(1, (int) ($GLOBALS['aria_home_per_page'] ?? 12));
+$keywords = trim((string) getval('search', ''));
 
-$browse = aria_home_browse($kind, $collection, $active_tags, $offset, $per_page);
+$browse = aria_home_browse($kind, $collection, $active_tags, $offset, $per_page, $keywords);
 $returned = count($browse['data']);
 $next_offset = $offset + $returned;
 $total = (int) $browse['total'];

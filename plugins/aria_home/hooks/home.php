@@ -25,7 +25,9 @@ function HookAria_homeHomeHomebeforepanels(): void
         }
     }
 
-    aria_home_render_page($kind, $collection, $active_tags);
+    $search = trim((string) getval('aria_search', ''));
+
+    aria_home_render_page($kind, $collection, $active_tags, $search);
 
     // Hide default home chrome when Aria home is active
     echo '<style>'

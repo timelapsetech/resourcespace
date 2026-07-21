@@ -31,6 +31,7 @@ $lang['aria_home_facet_limit'] = 'Limit';
 $lang['aria_home_facet_empty'] = 'No values in use yet.';
 $lang['aria_home_no_collections'] = 'Create a collection to filter here.';
 $lang['aria_home_assets'] = 'assets';
+$lang['aria_home_search_placeholder'] = 'Search assets';
 $lang['aria_home_no_results'] = 'No assets match these filters.';
 $lang['aria_home_browse_library'] = 'Browse library';
 $lang['aria_home_load_more'] = 'Load more';
