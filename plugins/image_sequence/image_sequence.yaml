@@ -1,8 +1,8 @@
 name: image_sequence
 title: Image Sequence
 author: Time Lapse Technologies
-version: 1.18
-desc: Ingest still folders as Image Sequence resources (one folder = one sequence; EXIF first/last + cadence samples; optional later shot-split). Read-only scan roots, filestore manifests/staging, Omakase in/out + representative frame, video NLE, search-card hover scrub. Proxies max 1280px wide preserving source aspect. Requires the StaticSync staticsync_skip_file hook — see readme.txt / patches/.
+version: 1.21
+desc: Ingest still folders as Image Sequence resources (one folder = one sequence; EXIF first/last + cadence samples; optional later shot-split with CODE-1 / CODE-2 suffixes). Read-only scan roots, filestore manifests/staging, Omakase in/out + representative frame, video NLE, search-card hover scrub. Proxies max 1280px wide preserving source aspect. Requires the StaticSync staticsync_skip_file hook — see readme.txt / patches/.
 icon: images
 icon-colour: steelblue
 config_url: /plugins/image_sequence/pages/setup.php

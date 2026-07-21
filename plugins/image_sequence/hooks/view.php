@@ -125,7 +125,7 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
     return false;
 }
 
-function HookImage_sequenceViewAfterresourceed()
+function HookImage_sequenceViewAfterresourceactions()
 {
     global $resource, $ref, $lang, $baseurl_short, $access;
 

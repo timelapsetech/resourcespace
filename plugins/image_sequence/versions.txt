@@ -24,4 +24,5 @@
 1.18 Proxy: max 1280px wide, preserve source aspect (no pad/crop letterboxing)
 1.19 Proxy encode: dedicated ~2 Mbps (2000k) bitrate for 1280px sequences instead of core video preview settings
 1.20 Proxy/poster: avoid Ubuntu IM6 `-quality N` bug; prefer FFmpeg for snapshots; quieter FFmpeg logs; +faststart
+1.21 Shot split: new sequences get sequence code suffixes (-1, -2, …); original keeps its code; fix Afterresourceactions hook so split link appears
 

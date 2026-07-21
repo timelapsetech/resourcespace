@@ -2108,8 +2108,9 @@ function image_sequence_create_photo_resource(string $absolute_path, int $create
  * Create Image Sequence resource from a segment of dated files (in place).
  *
  * @param list<array{path: string, date: float}> $segment
+ * @param ?string $sequence_code Optional override (e.g. CODE-1 from shot split); null uses folder-derived code
  */
-function image_sequence_create_sequence_resource(array $segment, ?float $cadence, int $created_by = 0): int
+function image_sequence_create_sequence_resource(array $segment, ?float $cadence, int $created_by = 0, ?string $sequence_code = null): int
 {
     global $image_sequence_restype, $image_sequence_fps_default, $lang;
 
@@ -2124,6 +2125,9 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         return 0;
     }
     $folder_meta = image_sequence_folder_metadata($folder);
+    $resolved_sequence_code = ($sequence_code !== null && trim($sequence_code) !== '')
+        ? trim($sequence_code)
+        : $folder_meta['sequence_code'];
 
     $member_basenames = [];
     $seen_bases = [];
@@ -2217,7 +2221,7 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
         'cadence' => $cadence,
         'folder' => $folder_meta['folder_name'],
         'folder_path' => $folder_meta['folder_path'],
-        'sequence_code' => $folder_meta['sequence_code'],
+        'sequence_code' => $resolved_sequence_code,
         'representative_frame' => 0,
         'in_frame' => 0,
         'out_frame' => max(0, $frame_count - 1),
@@ -2601,6 +2605,33 @@ function image_sequence_detect_shot_breaks(int $ref): array
 }
 
 /**
+ * Sequence code currently on a resource, or folder-derived code as fallback.
+ */
+function image_sequence_base_sequence_code(int $ref): string
+{
+    global $image_sequence_seqcode_field;
+
+    $field = (int) ($image_sequence_seqcode_field ?? 0);
+    if ($field > 0) {
+        $code = trim((string) get_data_by_field($ref, $field));
+        if ($code !== '') {
+            return $code;
+        }
+    }
+
+    $data = image_sequence_get_data($ref);
+    if ($data === null) {
+        return '';
+    }
+    $folder_abs = image_sequence_relative_to_absolute((string) ($data['folder_path'] ?? ''));
+    if ($folder_abs === null) {
+        return '';
+    }
+
+    return image_sequence_folder_metadata($folder_abs)['sequence_code'];
+}
+
+/**
  * Replace member list on an existing sequence and refresh sparse EXIF timeline + proxy.
  *
  * @param list<string> $member_basenames
@@ -2741,6 +2772,7 @@ function image_sequence_split_sequence_by_cadence(int $ref, bool $dry_run = true
     $min_frames = (int) ($image_sequence_min_frames ?? 10);
     $cadence = $detection['cadence'] ?? null;
     $new_refs = [];
+    $base_code = image_sequence_base_sequence_code($ref);
 
     // First segment stays on the original resource.
     $first = $segments[0];
@@ -2752,6 +2784,7 @@ function image_sequence_split_sequence_by_cadence(int $ref, bool $dry_run = true
     }
     $new_refs[] = $ref;
 
+    $shot_suffix = 0;
     for ($i = 1, $n = count($segments); $i < $n; $i++) {
         $segment = $segments[$i];
         if (count($segment) < $min_frames) {
@@ -2761,7 +2794,9 @@ function image_sequence_split_sequence_by_cadence(int $ref, bool $dry_run = true
             }
             continue;
         }
-        $created = image_sequence_create_sequence_resource($segment, $cadence, $created_by);
+        $shot_suffix++;
+        $split_code = $base_code !== '' ? ($base_code . '-' . $shot_suffix) : null;
+        $created = image_sequence_create_sequence_resource($segment, $cadence, $created_by, $split_code);
         if ($created > 0) {
             $new_refs[] = $created;
         }
