@@ -11,9 +11,11 @@ command_line_only();
 setup_user(get_user(1));
 
 include_plugin_config('openai_gpt');
+include_plugin_config('edited_flag');
 include_once '/var/www/html/plugins/openai_gpt/include/openai_gpt_functions.php';
 include_once '/var/www/html/plugins/aria_home/include/aria_home_functions.php';
 include_once '/var/www/html/plugins/image_sequence/include/image_sequence_functions.php';
+include_once '/var/www/html/plugins/edited_flag/include/edited_flag_functions.php';
 
 openai_gpt_ensure_lock_table();
 
@@ -25,9 +27,16 @@ if (!ps_value("SELECT inst_version AS value FROM plugins WHERE name=?", ['s', 'i
     activate_plugin('image_sequence');
     echo "activated image_sequence\n";
 }
+if (!ps_value("SELECT inst_version AS value FROM plugins WHERE name=?", ['s', 'edited_flag'], '')) {
+    activate_plugin('edited_flag');
+    echo "activated edited_flag\n";
+}
 
 image_sequence_ensure_setup();
 echo "image_sequence setup ok\n";
+
+$edited_flag_ref = edited_flag_ensure_setup();
+echo "edited_flag field={$edited_flag_ref}\n";
 
 /**
  * Ensure a global metadata field exists; return its ref.

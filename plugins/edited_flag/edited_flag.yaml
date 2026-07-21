@@ -1,0 +1,10 @@
+name: edited_flag
+title: Edited Flag
+author: Time Lapse Technologies
+version: 1.0
+desc: Adds a global "Edited" metadata field that is automatically set to "Yes" whenever a user manually saves metadata for a resource (edit page / batch edit). Automated updates such as ingest and AI enrichment (which write fields directly) do not set the flag.
+icon: square-pen
+icon-colour: steelblue
+category: Metadata
+default_priority: 900
+disable_group_select: 1
