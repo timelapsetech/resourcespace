@@ -1907,7 +1907,7 @@ function image_sequence_claimed_basenames_in_folder(string $folder_rel): array
  *
  * @param list<string> $member_basenames
  */
-function image_sequence_find_existing_sequence(string $folder_rel, array $member_basenames): int
+function image_sequence_find_existing_sequence(string $folder_rel, array $member_basenames, bool $exact_members = false): int
 {
     global $resource_deletion_state;
 
@@ -1924,8 +1924,10 @@ function image_sequence_find_existing_sequence(string $folder_rel, array $member
         if (isset($resource_deletion_state) && (int) $row['archive'] === (int) $resource_deletion_state) {
             continue;
         }
-        // One folder = one live sequence: any live row for this path counts.
-        if ((int) $row['frame_count'] > 0) {
+        // Ingest treats one folder as one live sequence: any live row for this path
+        // counts. Shot-split intentionally creates several sequences per folder, so it
+        // passes $exact_members to key idempotency on the member set instead.
+        if (!$exact_members && (int) $row['frame_count'] > 0) {
             return (int) $row['resource'];
         }
         $members = json_decode((string) $row['member_files'], true);
@@ -2110,7 +2112,7 @@ function image_sequence_create_photo_resource(string $absolute_path, int $create
  * @param list<array{path: string, date: float}> $segment
  * @param ?string $sequence_code Optional override (e.g. CODE-1 from shot split); null uses folder-derived code
  */
-function image_sequence_create_sequence_resource(array $segment, ?float $cadence, int $created_by = 0, ?string $sequence_code = null): int
+function image_sequence_create_sequence_resource(array $segment, ?float $cadence, int $created_by = 0, ?string $sequence_code = null, bool $match_exact_members = false): int
 {
     global $image_sequence_restype, $image_sequence_fps_default, $lang;
 
@@ -2144,7 +2146,7 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
     }
 
     // Idempotent: same folder + same members → return existing resource.
-    $existing = image_sequence_find_existing_sequence($folder_rel, $member_basenames);
+    $existing = image_sequence_find_existing_sequence($folder_rel, $member_basenames, $match_exact_members);
     if ($existing > 0) {
         return $existing;
     }
@@ -2796,8 +2798,10 @@ function image_sequence_split_sequence_by_cadence(int $ref, bool $dry_run = true
         }
         $shot_suffix++;
         $split_code = $base_code !== '' ? ($base_code . '-' . $shot_suffix) : null;
-        $created = image_sequence_create_sequence_resource($segment, $cadence, $created_by, $split_code);
-        if ($created > 0) {
+        // Split produces multiple sequences from one folder, so match on the exact
+        // member set — otherwise the folder short-circuit returns the original ref.
+        $created = image_sequence_create_sequence_resource($segment, $cadence, $created_by, $split_code, true);
+        if ($created > 0 && $created !== $ref && !in_array($created, $new_refs, true)) {
             $new_refs[] = $created;
         }
     }

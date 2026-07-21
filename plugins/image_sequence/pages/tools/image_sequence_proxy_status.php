@@ -119,7 +119,7 @@ foreach ($by_status as $r) {
 }
 
 $jobs = ps_query(
-    "SELECT ref, type, status, user, start_date, complete_date
+    "SELECT ref, type, status, user, start_date, priority
      FROM job_queue
      WHERE type LIKE '%image_sequence%' OR type LIKE '%proxy%' OR type LIKE '%openai%' OR type LIKE '%ai%'
      ORDER BY ref DESC
@@ -130,12 +130,12 @@ if ($jobs === []) {
 } else {
     foreach ($jobs as $r) {
         echo sprintf(
-            "#%s %s status=%s start=%s done=%s\n",
+            "#%s %s status=%s start=%s priority=%s\n",
             $r['ref'],
             $r['type'],
             $r['status'] ?? '',
             $r['start_date'] ?? '',
-            $r['complete_date'] ?? ''
+            $r['priority'] ?? ''
         );
     }
 }
