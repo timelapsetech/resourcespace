@@ -9,8 +9,8 @@ $aria_home_photo_restype = 1;
 $aria_home_video_restype = 3;
 $aria_home_sequence_restype = 5;
 
-# Source field for curated top-bar tags (Subject by default)
-$aria_home_featured_tags_field = 73;
+# Source field for curated top-bar tags (Category by default so pills = categories)
+$aria_home_featured_tags_field = 125;
 
 # Curated node refs shown across the top (empty = first N from source field until configured)
 $aria_home_featured_tag_nodes = [];

@@ -342,6 +342,7 @@ function image_sequence_metadata_tab_layout(int $sequence_tab, int $image_tab): 
         'imgseq_bitdepth' => ['order_by' => 2420, 'title' => 'Bit depth'],
         'imgseq_colorspace' => ['order_by' => 2430, 'title' => 'Color space'],
         'imgseq_orient' => ['order_by' => 2440, 'title' => 'Orientation'],
+        'imgseq_inverted' => ['order_by' => 2445, 'title' => 'Inverted'],
         'imgseq_software' => ['order_by' => 2450, 'title' => 'Software'],
     ];
 
@@ -404,6 +405,10 @@ function image_sequence_sequence_analysis_field_defs(): array
         ['title' => 'Real-time duration', 'shortname' => 'imgseq_realdur', 'exiftool' => ''],
         ['title' => 'Interval between frames', 'shortname' => 'imgseq_interval', 'exiftool' => ''],
         ['title' => 'Exposure program', 'shortname' => 'imgseq_expmode', 'exiftool' => ''],
+        // Derived orientation flag (not a direct EXIF tag): "Yes" when the source
+        // frames are shot upside down (EXIF Orientation = Rotate 180) and the
+        // proxy/poster are auto-rotated 180° to display upright.
+        ['title' => 'Inverted', 'shortname' => 'imgseq_inverted', 'exiftool' => ''],
     ];
 }
 
@@ -549,6 +554,92 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
             @unlink($created_temp_original);
         }
     }
+}
+
+/**
+ * Whether a still is shot upside down (EXIF Orientation = Rotate 180).
+ *
+ * Time-lapse rigs are frequently mounted inverted; the camera records
+ * Orientation 3 so viewers can auto-rotate. FFmpeg's image demuxer does not
+ * auto-rotate, so we detect this and bake a 180° rotation into the proxy/poster.
+ */
+function image_sequence_frame_is_inverted(string $frame_path): bool
+{
+    if ($frame_path === '' || !is_file($frame_path)) {
+        return false;
+    }
+    $exiftool = get_utility_path('exiftool');
+    if ($exiftool === false) {
+        return false;
+    }
+
+    // -n → numeric EXIF Orientation; 3 = rotated 180°.
+    $cmd = $exiftool . ' -s -s -s -n -Orientation %%FILE%%';
+    $value = trim((string) run_command(
+        $cmd,
+        false,
+        ['%%FILE%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path')]
+    ));
+
+    return $value === '3';
+}
+
+/**
+ * Detect inversion from a representative still and record it on the resource.
+ * Returns true when the sequence is inverted.
+ */
+function image_sequence_apply_inversion_flag(int $ref, string $frame_path): bool
+{
+    if ($ref <= 0) {
+        return false;
+    }
+
+    image_sequence_ensure_setup();
+    $inverted = image_sequence_frame_is_inverted($frame_path);
+
+    $field_ref = (int) ps_value(
+        'SELECT ref value FROM resource_type_field WHERE name = ?',
+        ['s', 'imgseq_inverted'],
+        0,
+        'schema'
+    );
+    if ($field_ref > 0) {
+        // Empty string clears the field for non-inverted sequences (keeps the panel tidy).
+        update_field($ref, $field_ref, $inverted ? 'Yes' : '');
+    }
+
+    return $inverted;
+}
+
+/**
+ * Whether a sequence resource is flagged inverted (drives proxy/poster rotation).
+ */
+function image_sequence_is_inverted(int $ref): bool
+{
+    if ($ref <= 0) {
+        return false;
+    }
+    $field_ref = (int) ps_value(
+        'SELECT ref value FROM resource_type_field WHERE name = ?',
+        ['s', 'imgseq_inverted'],
+        0,
+        'schema'
+    );
+    if ($field_ref <= 0) {
+        return false;
+    }
+    $value = trim((string) get_data_by_field($ref, $field_ref));
+
+    return $value !== '' && strcasecmp($value, 'no') !== 0;
+}
+
+/**
+ * FFmpeg video-filter fragment that rotates an inverted sequence upright, or ''.
+ * 180° = horizontal flip + vertical flip.
+ */
+function image_sequence_orientation_vf(int $ref): string
+{
+    return image_sequence_is_inverted($ref) ? 'hflip,vflip' : '';
 }
 
 /**
@@ -2248,6 +2339,8 @@ function image_sequence_create_sequence_resource(array $segment, ?float $cadence
             // EXIF + managed representative still from the default representative frame.
             $rep_path = $member_paths[$rep_frame] ?? $member_paths[0];
             image_sequence_extract_frame_metadata($ref, $rep_path);
+            // Flag upside-down (EXIF Rotate 180) sequences so the proxy renders upright.
+            image_sequence_apply_inversion_flag($ref, $rep_path);
             image_sequence_save_representative_alt_file($ref, $rep_path, $rep_frame);
         }
     } catch (Throwable $e) {
@@ -3054,6 +3147,11 @@ function image_sequence_generate_proxy(int $ref): bool
     // Height -2 = auto, even. min(W,iw) avoids upscaling smaller stills.
     $scale = "scale='trunc(min({$width}\\,iw)/2)*2':-2,setsar=1";
 
+    // Upside-down source frames (EXIF Rotate 180): FFmpeg does not auto-rotate stills,
+    // so bake a 180° flip ahead of the scale filter to render the proxy upright.
+    $orient_vf = image_sequence_orientation_vf($ref);
+    $vf = $orient_vf !== '' ? $orient_vf . ',' . $scale : $scale;
+
     try {
         $pattern = (string) ($data['frame_pattern'] ?? '');
         $folder_abs = image_sequence_relative_to_absolute((string) $data['folder_path']);
@@ -3065,7 +3163,7 @@ function image_sequence_generate_proxy(int $ref): bool
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
                 '%%START%%' => new CommandPlaceholderArg((string) (int) $data['start_number'], 'is_int_loose'),
                 '%%INPUT%%' => new CommandPlaceholderArg($input, [CommandPlaceholderArg::class, 'alwaysValid']),
-                '%%SCALE%%' => new CommandPlaceholderArg($scale, [CommandPlaceholderArg::class, 'alwaysValid']),
+                '%%SCALE%%' => new CommandPlaceholderArg($vf, [CommandPlaceholderArg::class, 'alwaysValid']),
             ];
             if ($duration_limit > 0) {
                 $cmd .= ' -t %%SECONDS%%';
@@ -3095,7 +3193,7 @@ function image_sequence_generate_proxy(int $ref): bool
             $params = [
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
                 '%%LIST%%' => new CommandPlaceholderArg($list_file, 'is_valid_rs_path'),
-                '%%SCALE%%' => new CommandPlaceholderArg($scale, [CommandPlaceholderArg::class, 'alwaysValid']),
+                '%%SCALE%%' => new CommandPlaceholderArg($vf, [CommandPlaceholderArg::class, 'alwaysValid']),
             ];
             if ($duration_limit > 0) {
                 $cmd .= ' -t %%SECONDS%%';
@@ -3115,14 +3213,17 @@ function image_sequence_generate_proxy(int $ref): bool
         $poster_source = $paths[$rep_index];
         $poster_jpg = get_resource_path($ref, true, 'pre', true, 'jpg');
         try {
-            run_command(
-                $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2 %%DST%%',
-                false,
-                [
-                    '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'image_sequence_is_valid_shell_path'),
-                    '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
-                ]
-            );
+            $poster_cmd = $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2'
+                . ($orient_vf !== '' ? ' -vf %%ORIENT%%' : '')
+                . ' %%DST%%';
+            $poster_params = [
+                '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'image_sequence_is_valid_shell_path'),
+                '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
+            ];
+            if ($orient_vf !== '') {
+                $poster_params['%%ORIENT%%'] = new CommandPlaceholderArg($orient_vf, [CommandPlaceholderArg::class, 'alwaysValid']);
+            }
+            run_command($poster_cmd, false, $poster_params);
         } catch (Throwable $e) {
             // Non-fatal if still is unsupported by ffmpeg; try copy for jpg/png.
             $ext_src = strtolower(pathinfo($poster_source, PATHINFO_EXTENSION));
@@ -3219,6 +3320,10 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
     $ffmpeg = get_utility_path('ffmpeg');
     $convert = get_utility_path('im-convert');
     $jpeg_q = image_sequence_im_jpeg_quality_arg(80);
+    // FFmpeg branch does not honour EXIF orientation; rotate inverted stills upright.
+    // (The ImageMagick fallback below already uses -auto-orient.)
+    $orient_vf = image_sequence_orientation_vf($ref);
+    $snap_vf = ($orient_vf !== '' ? $orient_vf . ',' : '') . 'scale=640:-2';
 
     foreach ($indices as $i => $frame_index) {
         $src = $paths[$frame_index] ?? '';
@@ -3232,10 +3337,11 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
         if ($ffmpeg !== false) {
             try {
                 run_command(
-                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -vf scale=640:-2 -q:v 3 -update 1 %%DST%%',
+                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -vf %%VF%% -q:v 3 -update 1 %%DST%%',
                     false,
                     [
                         '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
+                        '%%VF%%' => new CommandPlaceholderArg($snap_vf, [CommandPlaceholderArg::class, 'alwaysValid']),
                         '%%DST%%' => new CommandPlaceholderArg($dest, 'is_valid_rs_path'),
                     ]
                 );
@@ -3563,6 +3669,9 @@ function image_sequence_set_representative_frame(int $ref, int $frame_index): ar
     // (that walks every frame and can take minutes on SMB while a proxy encode is running).
     try {
         image_sequence_extract_frame_metadata($ref, $work_path);
+        // Re-evaluate inversion from the chosen still (orientation is sequence-wide,
+        // but keep the flag in sync with whatever frame is now representative).
+        image_sequence_apply_inversion_flag($ref, $work_path);
     } catch (Throwable $e) {
         debug('image_sequence_set_representative_frame metadata: ' . $e->getMessage());
     }

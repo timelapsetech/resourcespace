@@ -142,6 +142,49 @@ seed_ai_set_prompt($state, 'Identify the US state or territory if clearly shown 
 seed_ai_set_prompt($alt, 'Write a brief accessibility alt text for this image in one short sentence.');
 seed_ai_set_prompt($extend, 'Write a longer accessibility description (2-4 sentences) covering important visual details for someone who cannot see the image.');
 
+// Category is a fixed check-box list. The image prompt does not auto-inject the
+// available options, so enumerate them from the field's nodes and tell the model
+// to pick only from that exact list.
+$category = $by_name('category');
+$landmark = $by_name('landmark');
+
+if ($category > 0) {
+    $cat_names = ps_array(
+        'SELECT name AS `value` FROM node WHERE resource_type_field = ? ORDER BY name',
+        ['i', $category],
+        'schema'
+    );
+    $cat_names = array_values(array_filter(array_map('trim', $cat_names), static fn ($n) => $n !== ''));
+    $cat_list = implode(', ', $cat_names);
+    seed_ai_set_prompt(
+        $category,
+        'Select every category that clearly applies to this image, choosing ONLY from this exact list: '
+        . $cat_list
+        . '. Reply with a JSON array of the matching category names spelled exactly as listed above, or [] if none apply.'
+    );
+}
+
+if ($landmark > 0) {
+    seed_ai_set_prompt(
+        $landmark,
+        'Identify any well-known landmarks, monuments, stadiums, bridges, or named buildings clearly visible in this image. '
+        . 'Reply with a JSON array of the landmark names, or [] if none are recognizable.'
+    );
+}
+
+// Top-bar pills on the Aria home page should surface Category values so visitors
+// can click a category and browse everything in it.
+if ($category > 0) {
+    $aria_pills = get_plugin_config('aria_home') ?: [];
+    if (!is_array($aria_pills)) {
+        $aria_pills = [];
+    }
+    $aria_pills['aria_home_featured_tags_field'] = $category;
+    $aria_pills['aria_home_featured_tag_nodes'] = [];
+    set_plugin_config('aria_home', $aria_pills);
+    echo "aria_home featured pills -> category field {$category}\n";
+}
+
 echo "--- configured AI fields ---\n";
 $rows = ps_query(
     "SELECT ref, name, title, type, openai_gpt_input_field FROM resource_type_field
