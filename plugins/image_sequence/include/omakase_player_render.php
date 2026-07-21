@@ -78,6 +78,7 @@ function image_sequence_render_omakase_player(array $opts): void
             'savingInOut' => $lang['image_sequence_inout_saving'] ?? 'Saving in/out points…',
             'inoutSet' => $lang['image_sequence_inout_set'] ?? 'In/out points updated.',
             'inoutFailed' => $lang['image_sequence_inout_failed'] ?? 'Could not set in/out points.',
+            'markedRep' => $lang['image_sequence_marked_rep'] ?? 'Representative frame marked (click Save to store).',
             'savingRep' => $lang['image_sequence_rep_frame_saving'] ?? 'Saving representative frame…',
             'repSet' => $mode === 'video'
                 ? ($lang['image_sequence_video_rep_frame_set'] ?? 'Representative frame updated (still extracted).')

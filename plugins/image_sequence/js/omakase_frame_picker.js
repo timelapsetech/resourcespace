@@ -614,6 +614,7 @@ function wireControls(player, config) {
         ? (frameCount > 0 ? frameCount - 1 : 0)
         : clampFrame(config.outFrame, frameCount);
     let pendingRep = clampFrame(config.repFrame, frameCount);
+    let committedRep = pendingRep;
     let saving = false;
 
     jQuery('#image_sequence_saved_in_frame').text(String(pendingIn));
@@ -686,6 +687,26 @@ function wireControls(player, config) {
             });
         });
 
+    // Representative frame is only *marked* here (like in/out) — nothing is saved
+    // and the player is not disturbed. It is committed by the Save button below.
+    jQuery(document)
+        .off('click.imgseqOmakase', '#image_sequence_set_rep_frame')
+        .on('click.imgseqOmakase', '#image_sequence_set_rep_frame', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!config.canEdit) {
+                return;
+            }
+            pendingRep = currentFrame(player, frameCount);
+            jQuery('#image_sequence_saved_rep_frame').text(String(pendingRep));
+            refreshMarksUi();
+            flashButton('#image_sequence_set_rep_frame');
+            setStatus(config.lang.markedRep || 'Representative frame marked (click Save to store).');
+        });
+
+    // Save commits in/out and, if the representative frame was re-marked, the new
+    // representative frame too — running all the associated server-side work
+    // (full-res still, metadata extraction, AI captions) only at that point.
     jQuery(document)
         .off('click.imgseqOmakase', '#image_sequence_save_inout')
         .on('click.imgseqOmakase', '#image_sequence_save_inout', function (e) {
@@ -696,8 +717,51 @@ function wireControls(player, config) {
             saving = true;
             const btn = jQuery(this);
             btn.prop('disabled', true);
-            setStatus(config.lang.savingInOut || 'Saving in/out points…');
+            const messages = [];
+            let failed = false;
 
+            const finish = function () {
+                setStatus(
+                    messages.join(' ') || config.lang.inoutSet || 'In/out points updated.',
+                    failed
+                );
+                saving = false;
+                btn.prop('disabled', false);
+            };
+
+            const saveRepIfNeeded = function () {
+                if (pendingRep === committedRep) {
+                    finish();
+                    return;
+                }
+                setStatus(config.lang.savingRep || 'Saving representative frame…');
+                postJson(config.repUrl, {frame: pendingRep}, config.csrfRep)
+                    .done(function (data) {
+                        if (data && data.ok) {
+                            committedRep = clampFrame(data.frame, frameCount);
+                            pendingRep = committedRep;
+                            jQuery('#image_sequence_saved_rep_frame').text(String(pendingRep));
+                            refreshMarksUi();
+                            if (data.message) {
+                                messages.push(data.message);
+                            }
+                        } else {
+                            failed = true;
+                            messages.push(
+                                (data && data.message)
+                                || config.lang.repFailed
+                                || 'Could not set representative frame.'
+                            );
+                        }
+                    })
+                    .fail(function () {
+                        failed = true;
+                        messages.push(config.lang.repFailed || 'Could not set representative frame.');
+                    })
+                    .always(finish);
+            };
+
+            setStatus(config.lang.savingInOut || 'Saving in/out points…');
             postJson(
                 config.inoutUrl,
                 {in_frame: pendingIn, out_frame: pendingOut},
@@ -710,60 +774,30 @@ function wireControls(player, config) {
                         jQuery('#image_sequence_saved_in_frame').text(String(pendingIn));
                         jQuery('#image_sequence_saved_out_frame').text(String(pendingOut));
                         refreshMarksUi();
-                        setStatus(data.message || config.lang.inoutSet || 'In/out points updated.');
-                    } else {
-                        setStatus(
-                            (data && data.message) || config.lang.inoutFailed || 'Could not set in/out points.',
-                            true
-                        );
-                    }
-                })
-                .fail(function () {
-                    setStatus(config.lang.inoutFailed || 'Could not set in/out points.', true);
-                })
-                .always(function () {
-                    saving = false;
-                    btn.prop('disabled', false);
-                });
-        });
-
-    jQuery(document)
-        .off('click.imgseqOmakase', '#image_sequence_set_rep_frame')
-        .on('click.imgseqOmakase', '#image_sequence_set_rep_frame', function (e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            if (saving || !config.canEdit) {
-                return;
-            }
-            const frame = currentFrame(player, frameCount);
-            saving = true;
-            const btn = jQuery(this);
-            btn.prop('disabled', true);
-            setStatus(config.lang.savingRep || 'Saving representative frame…');
-
-            postJson(config.repUrl, {frame: frame}, config.csrfRep)
-                .done(function (data) {
-                    if (data && data.ok) {
-                        pendingRep = clampFrame(data.frame, frameCount);
-                        jQuery('#image_sequence_saved_rep_frame').text(String(pendingRep));
-                        refreshMarksUi();
-                        setStatus(data.message || config.lang.repSet || 'Representative frame updated.');
-                        if (typeof CentralSpaceLoad === 'function' && config.viewUrl) {
-                            CentralSpaceLoad(config.viewUrl, true);
+                        if (data.message) {
+                            messages.push(data.message);
                         }
                     } else {
-                        setStatus(
-                            (data && data.message) || config.lang.repFailed || 'Could not set representative frame.',
-                            true
+                        failed = true;
+                        messages.push(
+                            (data && data.message)
+                            || config.lang.inoutFailed
+                            || 'Could not set in/out points.'
                         );
-                        saving = false;
-                        btn.prop('disabled', false);
                     }
                 })
                 .fail(function () {
-                    setStatus(config.lang.repFailed || 'Could not set representative frame.', true);
-                    saving = false;
-                    btn.prop('disabled', false);
+                    failed = true;
+                    messages.push(config.lang.inoutFailed || 'Could not set in/out points.');
+                })
+                .always(function () {
+                    // Only push the representative-frame work through once in/out
+                    // succeeded; abort the rep save if in/out failed.
+                    if (failed) {
+                        finish();
+                        return;
+                    }
+                    saveRepIfNeeded();
                 });
         });
 }
