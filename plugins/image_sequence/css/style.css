@@ -1,16 +1,95 @@
 /*
- * Keep player + NLE controls inside #previewimagewrapper so Resource Tools /
- * Workflow tabs float beside them (same layout as the standard video player).
- * Width fills remaining space beside the ~445px tools column.
+ * View page layout: show the player and the Resource Tools / Workflow Actions
+ * tab set side by side on wide screens, and stack them (tools below the player)
+ * when there isn't room. Scoped with :has() so standard resource types keep the
+ * core layout. See the max-width media query further down for the stack point.
  */
+.RecordPanel .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 15px;
+}
+
 #previewimagewrapper.image_sequence_omakase_wrap {
-    float: left;
     position: relative;
-    width: calc(100% - 460px);
-    min-width: 480px;
-    max-width: none;
-    margin: 0 15px 15px 0;
     box-sizing: border-box;
+    flex: 1 1 560px;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 0 15px 0;
+}
+
+/* Resource Tools + Workflow Actions column sits beside the player. */
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload {
+    float: none;
+    flex: 0 1 460px;
+    width: auto;
+    min-width: 360px;
+    margin: 0 0 15px 0;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload .RecordTools {
+    width: 100%;
+}
+
+/* Metadata (and any other) panels drop to a full-width row below the player. */
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > #Panel1,
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > #Metadata {
+    flex: 1 1 100%;
+    width: 100%;
+    clear: both;
+}
+
+/*
+ * Resource Tools file list: stack the Download / View buttons beneath the file
+ * description instead of crowding them into a narrow second column, so neither
+ * the text nor the buttons get crunched in the side-by-side column.
+ */
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions,
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tbody {
+    display: block;
+    width: 100%;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptionsHeader {
+    display: none;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tr.DownloadDBlend {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tr.DownloadDBlend > td {
+    display: block;
+    width: 100% !important;
+    padding: 0;
+    text-align: left;
+    border-top: none;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadFileName h2 {
+    margin-bottom: 2px;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.Picker select {
+    max-width: 100%;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadButton {
+    margin-top: 0.4rem;
+    text-align: left;
+    font-weight: normal;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadButton a {
+    display: inline-block;
+    width: auto;
+    min-width: 130px;
+    margin: 0 0.4rem 0 0;
 }
 
 .image_sequence_omakase_player {
@@ -426,19 +505,24 @@
     font-size: 22px;
 }
 
-@media (max-width: 1100px) {
-    #previewimagewrapper.image_sequence_omakase_wrap {
-        width: calc(100% - 460px);
-        min-width: 0;
+/*
+ * Not enough room for the player + tools side by side: fall back to a single
+ * column so the tools sit below the player (the pre-existing stacked layout).
+ */
+@media (max-width: 980px) {
+    .RecordPanel .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) {
+        display: block;
     }
-}
 
-@media (max-width: 900px) {
     #previewimagewrapper.image_sequence_omakase_wrap {
-        float: none;
         width: 100%;
         max-width: 100%;
         margin: 0 0 15px 0;
+    }
+
+    .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload {
+        width: 100%;
+        min-width: 0;
     }
 }
 

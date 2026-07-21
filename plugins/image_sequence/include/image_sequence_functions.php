@@ -309,6 +309,7 @@ function image_sequence_metadata_tab_layout(int $sequence_tab, int $image_tab): 
     $sequence = [
         'imgseq_frames' => ['order_by' => 2100, 'title' => 'Frame count'],
         'imgseq_fps' => ['order_by' => 2110, 'title' => 'Playback FPS'],
+        'imgseq_videorender' => ['order_by' => 2115, 'title' => 'Video Render Supported'],
         'imgseq_duration' => ['order_by' => 2120, 'title' => 'Playback duration'],
         'imgseq_realdur' => ['order_by' => 2130, 'title' => 'Real-time duration'],
         'imgseq_interval' => ['order_by' => 2140, 'title' => 'Interval between frames'],
@@ -339,6 +340,8 @@ function image_sequence_metadata_tab_layout(int $sequence_tab, int $image_tab): 
         'imgseq_whitebal' => ['order_by' => 2390, 'title' => 'White balance'],
         'imgseq_flash' => ['order_by' => 2400, 'title' => 'Flash'],
         'imgseq_pixels' => ['order_by' => 2410, 'title' => 'Pixel dimensions'],
+        'imgseq_width' => ['order_by' => 2412, 'title' => 'Image width'],
+        'imgseq_height' => ['order_by' => 2414, 'title' => 'Image height'],
         'imgseq_bitdepth' => ['order_by' => 2420, 'title' => 'Bit depth'],
         'imgseq_colorspace' => ['order_by' => 2430, 'title' => 'Color space'],
         'imgseq_orient' => ['order_by' => 2440, 'title' => 'Orientation'],
@@ -405,6 +408,12 @@ function image_sequence_sequence_analysis_field_defs(): array
         ['title' => 'Real-time duration', 'shortname' => 'imgseq_realdur', 'exiftool' => ''],
         ['title' => 'Interval between frames', 'shortname' => 'imgseq_interval', 'exiftool' => ''],
         ['title' => 'Exposure program', 'shortname' => 'imgseq_expmode', 'exiftool' => ''],
+        // Separate width / height (in addition to the combined "Pixel dimensions"
+        // field) and the largest standard video render the source resolution
+        // supports. Derived from resource_dimensions, not a single EXIF tag.
+        ['title' => 'Image width', 'shortname' => 'imgseq_width', 'exiftool' => ''],
+        ['title' => 'Image height', 'shortname' => 'imgseq_height', 'exiftool' => ''],
+        ['title' => 'Video Render Supported', 'shortname' => 'imgseq_videorender', 'exiftool' => ''],
         // Derived orientation flag (not a direct EXIF tag): "Yes" when the source
         // frames are shot upside down (EXIF Orientation = Rotate 180) and the
         // proxy/poster are auto-rotated 180° to display upright.
@@ -422,6 +431,47 @@ function image_sequence_photo_metadata_field_defs(): array
         image_sequence_image_metadata_field_defs(),
         image_sequence_sequence_analysis_field_defs()
     );
+}
+
+/**
+ * Largest standard video resolution the given source frame dimensions can be
+ * rendered to without upscaling.
+ *
+ * Compares the frame's long/short edges against the common delivery ladder so
+ * portrait sequences map to the same tier as their landscape equivalent.
+ *
+ * @return string Label such as "4K (UHD)", or "" when dimensions are unknown.
+ */
+function image_sequence_video_render_supported(int $width, int $height): string
+{
+    if ($width <= 0 || $height <= 0) {
+        return '';
+    }
+
+    // Ascending ladder of common delivery sizes (landscape width x height).
+    $ladder = [
+        ['label' => '720p (HD)', 'w' => 1280, 'h' => 720],
+        ['label' => '1080p (Full HD)', 'w' => 1920, 'h' => 1080],
+        ['label' => '2K (DCI)', 'w' => 2048, 'h' => 1080],
+        ['label' => '4K (UHD)', 'w' => 3840, 'h' => 2160],
+        ['label' => '8K (UHD)', 'w' => 7680, 'h' => 4320],
+    ];
+
+    $long = max($width, $height);
+    $short = min($width, $height);
+
+    $supported = '';
+    foreach ($ladder as $size) {
+        if ($long >= $size['w'] && $short >= $size['h']) {
+            $supported = $size['label'];
+        }
+    }
+
+    if ($supported === '') {
+        return 'Below 720p (' . $width . ' × ' . $height . ')';
+    }
+
+    return $supported;
 }
 
 /**
@@ -526,6 +576,27 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
     if ($size_field > 0 && $filesize > 0) {
         $mb = round($filesize / (1024 * 1024), 2);
         update_field($ref, $size_field, $mb . ' MB');
+    }
+
+    // Separate width / height (in addition to the combined "Pixel dimensions"
+    // field) plus the largest standard video render the resolution supports.
+    // These are analysis-only fields (no EXIF mapping) so they are not touched
+    // by the extract_exif_comment() pass below.
+    $derived_fields = [
+        'imgseq_width' => $width > 0 ? (string) $width : '',
+        'imgseq_height' => $height > 0 ? (string) $height : '',
+        'imgseq_videorender' => image_sequence_video_render_supported($width, $height),
+    ];
+    foreach ($derived_fields as $derived_shortname => $derived_value) {
+        $derived_field = (int) ps_value(
+            'SELECT ref value FROM resource_type_field WHERE name = ?',
+            ['s', $derived_shortname],
+            0,
+            'schema'
+        );
+        if ($derived_field > 0) {
+            update_field($ref, $derived_field, $derived_value);
+        }
     }
 
     // Full ExifTool → mapped metadata fields (camera, lens, ISO, etc.).
