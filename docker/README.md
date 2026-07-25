@@ -128,6 +128,10 @@ Cron inside the container also runs:
 - `image_sequence_sync.php` hourly
 - hitcount copy daily
 
+Cron logs to `/var/log/resourcespace-cron.log` (www-data cannot write Docker’s `/proc/1/fd/1`).
+
+On container start, `entrypoint.sh` runs `docker/recover_offline_jobs_on_boot.php` to clear orphan `job_*` / `offlinejobs_*` locks and requeue `STATUS_INPROGRESS` jobs left behind when the previous container was killed. Without that, cron exits with “There are currently 10 jobs in progress.”
+
 ## Remote Ollama (LAN)
 
 Ollama is **not** part of this Compose file. On the AI machine:

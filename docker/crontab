@@ -1,14 +1,18 @@
 # ResourceSpace offline jobs (proxies, AI captions, etc.) and image-sequence NAS sync.
 # Runs as www-data via crontab -u in the image.
+#
+# Do NOT redirect to /proc/1/fd/1 — www-data cannot open PID 1's fds, so the
+# shell fails the redirect and PHP never runs. Log to a www-data-writable file
+# instead (created in entrypoint.sh).
 
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Offline job queue every 5 minutes
-*/5 * * * * cd /var/www/html && php pages/tools/offline_jobs.php >/proc/1/fd/1 2>/proc/1/fd/2
+*/5 * * * * cd /var/www/html && php pages/tools/offline_jobs.php >>/var/log/resourcespace-cron.log 2>&1
 
 # Image sequence folder sync hourly (idempotent; skips claimed frames)
-15 * * * * cd /var/www/html && php plugins/image_sequence/pages/tools/image_sequence_sync.php >/proc/1/fd/1 2>/proc/1/fd/2
+15 * * * * cd /var/www/html && php plugins/image_sequence/pages/tools/image_sequence_sync.php >>/var/log/resourcespace-cron.log 2>&1
 
 # Core hitcount copy (same as official RS image daily job)
-30 2 * * * cd /var/www/html/pages/tools && php cron_copy_hitcount.php >/proc/1/fd/1 2>/proc/1/fd/2
+30 2 * * * cd /var/www/html/pages/tools && php cron_copy_hitcount.php >>/var/log/resourcespace-cron.log 2>&1
