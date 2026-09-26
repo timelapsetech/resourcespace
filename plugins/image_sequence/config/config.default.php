@@ -76,8 +76,12 @@ $image_sequence_framing_aspects = [
     '2.39:1' => [239, 100],
 ];
 $image_sequence_framing_default_aspect = '16:9';
-# FFmpeg encode flags for framing crop renders (4K output).
-$image_sequence_framing_render_options = '-c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p -movflags +faststart';
+# Default playback FPS for framing renders (overridable in the UI before Render).
+$image_sequence_framing_fps_default = 24;
+# Target video bitrate for 4K framing renders (1080p≈8 Mbps, 720p≈5 Mbps are built-in).
+$image_sequence_framing_bitrate = '15000k';
+# Advanced: full FFmpeg encode flags. When non-empty, overrides size-based bitrate presets.
+$image_sequence_framing_render_options = '';
 
 # Protect field configs from accidental deletion when plugin is active.
 $image_sequence_fieldvars = [

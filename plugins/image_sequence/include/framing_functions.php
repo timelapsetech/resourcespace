@@ -128,19 +128,68 @@ function image_sequence_framing_fit_aspect(int $aspect_w, int $aspect_h, int $co
 }
 
 /**
- * 4K / 1080p delivery targets for a given aspect (portrait uses tall UHD/FHD).
+ * Delivery targets for a given aspect (portrait uses tall containers).
  *
- * @return array{uhd: array{width: int, height: int}, fhd: array{width: int, height: int}}
+ * @return array{uhd: array{width: int, height: int}, fhd: array{width: int, height: int}, hd: array{width: int, height: int}}
  */
 function image_sequence_framing_delivery_targets(int $aspect_w, int $aspect_h): array
 {
     $portrait = $aspect_h > $aspect_w;
     $uhd_box = $portrait ? [2160, 3840] : [3840, 2160];
     $fhd_box = $portrait ? [1080, 1920] : [1920, 1080];
+    $hd_box = $portrait ? [720, 1280] : [1280, 720];
 
     return [
         'uhd' => image_sequence_framing_fit_aspect($aspect_w, $aspect_h, $uhd_box[0], $uhd_box[1]),
         'fhd' => image_sequence_framing_fit_aspect($aspect_w, $aspect_h, $fhd_box[0], $fhd_box[1]),
+        'hd' => image_sequence_framing_fit_aspect($aspect_w, $aspect_h, $hd_box[0], $hd_box[1]),
+    ];
+}
+
+/**
+ * Normalise a UI/API render size to: 4k | 1080p | 720p.
+ */
+function image_sequence_framing_normalise_size(string $size): string
+{
+    $size = strtolower(trim($size));
+    $aliases = [
+        '4k' => '4k',
+        'uhd' => '4k',
+        '2160' => '4k',
+        '2160p' => '4k',
+        '1080' => '1080p',
+        '1080p' => '1080p',
+        'fhd' => '1080p',
+        '720' => '720p',
+        '720p' => '720p',
+        'hd' => '720p',
+    ];
+
+    return $aliases[$size] ?? '4k';
+}
+
+/**
+ * Pixel target for a render size + aspect.
+ *
+ * @return array{width: int, height: int, size: string, label: string}
+ */
+function image_sequence_framing_size_target(int $aspect_w, int $aspect_h, string $size): array
+{
+    $size = image_sequence_framing_normalise_size($size);
+    $targets = image_sequence_framing_delivery_targets($aspect_w, $aspect_h);
+    $map = [
+        '4k' => ['key' => 'uhd', 'label' => '4K'],
+        '1080p' => ['key' => 'fhd', 'label' => '1080p'],
+        '720p' => ['key' => 'hd', 'label' => '720p'],
+    ];
+    $meta = $map[$size];
+    $dims = $targets[$meta['key']];
+
+    return [
+        'width' => (int) $dims['width'],
+        'height' => (int) $dims['height'],
+        'size' => $size,
+        'label' => $meta['label'],
     ];
 }
 
@@ -440,6 +489,8 @@ function image_sequence_framing_normalize_box(array $box, int $source_width, int
  */
 function image_sequence_framing_serialize_box(array $row): array
 {
+    global $baseurl_short;
+
     $aspect_w = (int) ($row['aspect_w'] ?? 16);
     $aspect_h = (int) ($row['aspect_h'] ?? 9);
     $width = (int) ($row['width'] ?? 0);
@@ -451,11 +502,16 @@ function image_sequence_framing_serialize_box(array $row): array
     $resource = (int) ($row['resource'] ?? 0);
 
     $alt_url = '';
+    $preview_url = '';
     if ($alt_file > 0 && $resource > 0) {
         $alt = get_alternative_file($resource, $alt_file);
         if (is_array($alt)) {
             $ext = (string) ($alt['file_extension'] ?? 'mp4');
             $alt_url = (string) get_resource_path($resource, false, '', false, $ext, true, 1, false, '', $alt_file);
+            $preview_url = (string) generateURL(($baseurl_short ?: '/') . 'pages/preview.php', [
+                'ref' => $resource,
+                'alternative' => $alt_file,
+            ]);
         }
     }
 
@@ -477,8 +533,11 @@ function image_sequence_framing_serialize_box(array $row): array
         'target_uhd_height' => (int) $targets['uhd']['height'],
         'target_fhd_width' => (int) $targets['fhd']['width'],
         'target_fhd_height' => (int) $targets['fhd']['height'],
+        'target_hd_width' => (int) $targets['hd']['width'],
+        'target_hd_height' => (int) $targets['hd']['height'],
         'alt_file' => $alt_file > 0 ? $alt_file : null,
         'alt_url' => $alt_url,
+        'preview_url' => $preview_url,
         'render_status' => (string) ($row['render_status'] ?? ''),
         'render_message' => (string) ($row['render_message'] ?? ''),
     ];
@@ -699,11 +758,16 @@ function image_sequence_framing_alt_type(int $box_ref): string
 }
 
 /**
- * Queue (or run inline) a 4K crop render for one framing box.
+ * Queue (or run inline) a crop render for one framing box.
  *
  * @return array{ok: bool, message: string, box?: array<string, mixed>}
  */
-function image_sequence_framing_queue_render(int $resource, int $box_ref): array
+function image_sequence_framing_queue_render(
+    int $resource,
+    int $box_ref,
+    float $fps = 0.0,
+    string $size = '4k'
+): array
 {
     global $lang, $offline_job_queue, $userref, $baseurl;
 
@@ -720,6 +784,9 @@ function image_sequence_framing_queue_render(int $resource, int $box_ref): array
         ];
     }
 
+    $fps = image_sequence_framing_normalise_fps($fps);
+    $size = image_sequence_framing_normalise_size($size);
+
     ps_query(
         "UPDATE resource_framing_box SET render_status = 'queued', render_message = ? WHERE ref = ?",
         [
@@ -731,6 +798,8 @@ function image_sequence_framing_queue_render(int $resource, int $box_ref): array
     $job_data = [
         'resource' => $resource,
         'box_ref' => $box_ref,
+        'fps' => $fps,
+        'size' => $size,
     ];
     $success = $lang['image_sequence_framing_render_ready'] ?? 'Framing render ready';
     $failure = $lang['image_sequence_framing_render_failed'] ?? 'Framing render failed';
@@ -750,7 +819,7 @@ function image_sequence_framing_queue_render(int $resource, int $box_ref): array
             'imgseq_framing_' . $box_ref
         );
     } else {
-        $ok = image_sequence_render_framing_box($box_ref);
+        $ok = image_sequence_render_framing_box($box_ref, $fps, $size);
         if (!$ok) {
             $rows = ps_query('SELECT * FROM resource_framing_box WHERE ref = ?', ['i', $box_ref]);
             $msg = (string) ($rows[0]['render_message'] ?? $failure);
@@ -807,18 +876,81 @@ function image_sequence_framing_cleanup_resource(int $ref): void
 }
 
 /**
- * Encode options for framing renders.
+ * Clamp / normalise a framing render FPS value.
  */
-function image_sequence_framing_encode_options(): string
+function image_sequence_framing_normalise_fps(float $fps): float
 {
-    global $image_sequence_framing_render_options;
+    global $image_sequence_framing_fps_default;
+
+    $default = (float) ($image_sequence_framing_fps_default ?? 24);
+    if ($default <= 0) {
+        $default = 24.0;
+    }
+    if ($fps <= 0) {
+        $fps = $default;
+    }
+    // Keep a practical range for still-sequence playback rates.
+    $fps = max(1.0, min(120.0, $fps));
+
+    // Prefer clean values QuickTime / players accept (avoid long floats).
+    if (abs($fps - round($fps)) < 0.001) {
+        return (float) (int) round($fps);
+    }
+
+    return round($fps, 3);
+}
+
+/**
+ * Encode options for framing renders — QuickTime-friendly H.264/MP4 sized for the target.
+ *
+ * @param string $size 4k | 1080p | 720p
+ */
+function image_sequence_framing_encode_options(string $size = '4k'): string
+{
+    global $image_sequence_framing_render_options, $image_sequence_framing_bitrate;
 
     $custom = trim((string) ($image_sequence_framing_render_options ?? ''));
     if ($custom !== '') {
         return $custom;
     }
 
-    return '-c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p -movflags +faststart';
+    $size = image_sequence_framing_normalise_size($size);
+
+    // Approx delivery bitrates that look good and open in QuickTime.
+    $presets = [
+        '4k' => ['bitrate' => '15000k', 'level' => '5.1', 'g' => 48],
+        '1080p' => ['bitrate' => '8000k', 'level' => '4.1', 'g' => 48],
+        '720p' => ['bitrate' => '5000k', 'level' => '3.1', 'g' => 48],
+    ];
+    $preset = $presets[$size];
+
+    // Optional global bitrate override applies to the default (4K) path only when size is 4k.
+    $bitrate = $preset['bitrate'];
+    if ($size === '4k') {
+        $override = trim((string) ($image_sequence_framing_bitrate ?? ''));
+        if ($override !== '' && $override !== '0') {
+            $bitrate = preg_match('/^\d+$/', $override) ? ($override . 'k') : $override;
+        }
+    }
+
+    $maxrate = $bitrate;
+    $bufsize = '30000k';
+    if (preg_match('/^(\d+)k$/i', $bitrate, $matches)) {
+        $kbps = (int) $matches[1];
+        $maxrate = $kbps . 'k';
+        $bufsize = max(2000, $kbps * 2) . 'k';
+    }
+
+    $g = (int) $preset['g'];
+    $keyint = max(12, (int) round($g / 2));
+
+    // High + yuv420p + avc1 + faststart = QuickTime / most players.
+    return '-f mp4 -c:v libx264 -b:v ' . $bitrate
+        . ' -maxrate ' . $maxrate
+        . ' -bufsize ' . $bufsize
+        . ' -pix_fmt yuv420p -profile:v high -level ' . $preset['level']
+        . ' -preset medium -g ' . $g . ' -keyint_min ' . $keyint
+        . ' -bf 2 -tag:v avc1 -movflags +faststart';
 }
 
 /**
@@ -826,7 +958,13 @@ function image_sequence_framing_encode_options(): string
  *
  * @return int Alternative file ref, or 0 on failure
  */
-function image_sequence_framing_save_alt_file(int $resource, int $box_ref, string $mp4_path, string $label): int
+function image_sequence_framing_save_alt_file(
+    int $resource,
+    int $box_ref,
+    string $mp4_path,
+    string $label,
+    string $size = '4k'
+): int
 {
     global $lang;
 
@@ -834,12 +972,16 @@ function image_sequence_framing_save_alt_file(int $resource, int $box_ref, strin
         return 0;
     }
 
+    $size = image_sequence_framing_normalise_size($size);
+    $size_label = ['4k' => '4K', '1080p' => '1080p', '720p' => '720p'][$size] ?? '4K';
+
     $extension = 'mp4';
-    $basename = 'framing_' . $box_ref . '.mp4';
-    $alt_name = $label !== '' ? $label : ('Framing ' . $box_ref);
+    $basename = 'framing_' . $box_ref . '_' . $size . '.mp4';
+    $alt_name = ($label !== '' ? $label : ('Framing ' . $box_ref)) . ' (' . $size_label . ')';
     $alt_type = image_sequence_framing_alt_type($box_ref);
     $description = sprintf(
-        $lang['image_sequence_framing_alt_desc'] ?? '4K framing crop render (box #%d)',
+        $lang['image_sequence_framing_alt_desc'] ?? '%s framing crop render (box #%d)',
+        $size_label,
         $box_ref
     );
 
@@ -902,13 +1044,22 @@ function image_sequence_framing_save_alt_file(int $resource, int $box_ref, strin
     );
     update_disk_usage($resource);
 
+    // Generate preview thumbs (and enable preview.php / Alternatives panel playback).
+    global $alternative_file_previews;
+    if (!empty($alternative_file_previews) && function_exists('create_previews')) {
+        create_previews($resource, false, $extension, false, false, $aref);
+    }
+
     return $aref;
 }
 
 /**
- * Render one framing box: crop in→out to 4K delivery size, store as alt file.
+ * Render one framing box: crop in→out to the chosen delivery size, store as alt file.
+ *
+ * @param float  $fps  Playback FPS (0 = plugin default, typically 24).
+ * @param string $size 4k | 1080p | 720p
  */
-function image_sequence_render_framing_box(int $box_ref): bool
+function image_sequence_render_framing_box(int $box_ref, float $fps = 0.0, string $size = '4k'): bool
 {
     global $lang;
 
@@ -925,6 +1076,9 @@ function image_sequence_render_framing_box(int $box_ref): bool
 
         return false;
     }
+
+    $fps = image_sequence_framing_normalise_fps($fps);
+    $size = image_sequence_framing_normalise_size($size);
 
     ps_query(
         "UPDATE resource_framing_box SET render_status = 'processing', render_message = ? WHERE ref = ?",
@@ -993,13 +1147,13 @@ function image_sequence_render_framing_box(int $box_ref): bool
         return false;
     }
 
-    $targets = image_sequence_framing_delivery_targets($aspect_w, $aspect_h);
-    $tw = (int) $targets['uhd']['width'];
-    $th = (int) $targets['uhd']['height'];
+    $target = image_sequence_framing_size_target($aspect_w, $aspect_h, $size);
+    $tw = (int) $target['width'];
+    $th = (int) $target['height'];
 
     $temp_dir = get_temp_dir(false, 'imgseq_framing_' . $box_ref);
-    $out_path = rtrim($temp_dir, '/') . '/framing_' . $box_ref . '.mp4';
-    $encode_opts = image_sequence_framing_encode_options();
+    $out_path = rtrim($temp_dir, '/') . '/framing_' . $box_ref . '_' . $size . '.mp4';
+    $encode_opts = image_sequence_framing_encode_options($size);
 
     $is_sequence = image_sequence_is_sequence_resource($resource_data);
     $is_video = image_sequence_is_video_resource($resource_data);
@@ -1012,7 +1166,8 @@ function image_sequence_render_framing_box(int $box_ref): bool
                 $tw,
                 $th,
                 $out_path,
-                $encode_opts
+                $encode_opts,
+                $fps
             );
         } elseif ($is_video) {
             $ok = image_sequence_framing_render_video(
@@ -1021,7 +1176,8 @@ function image_sequence_render_framing_box(int $box_ref): bool
                 $tw,
                 $th,
                 $out_path,
-                $encode_opts
+                $encode_opts,
+                $fps
             );
         } else {
             $ok = false;
@@ -1045,7 +1201,7 @@ function image_sequence_render_framing_box(int $box_ref): bool
     }
 
     $label = (string) ($box['label'] ?? '');
-    $aref = image_sequence_framing_save_alt_file($resource, $box_ref, $out_path, $label);
+    $aref = image_sequence_framing_save_alt_file($resource, $box_ref, $out_path, $label, $size);
     @unlink($out_path);
 
     if ($aref <= 0) {
@@ -1110,7 +1266,8 @@ function image_sequence_framing_render_sequence(
     int $target_w,
     int $target_h,
     string $out_path,
-    string $encode_opts
+    string $encode_opts,
+    float $fps = 0.0
 ): bool {
     $ffmpeg = get_utility_path('ffmpeg');
     if ($ffmpeg === false) {
@@ -1128,7 +1285,7 @@ function image_sequence_framing_render_sequence(
     }
 
     $frame_count = count($paths);
-    $fps = (float) ($data['fps'] ?: 30);
+    $fps = image_sequence_framing_normalise_fps($fps);
     $in_frame = isset($data['in_frame']) && $data['in_frame'] !== null && $data['in_frame'] !== ''
         ? (int) $data['in_frame']
         : 0;
@@ -1153,15 +1310,17 @@ function image_sequence_framing_render_sequence(
     $pattern = (string) ($data['frame_pattern'] ?? '');
     $folder_abs = image_sequence_relative_to_absolute((string) $data['folder_path']);
     $start_number = (int) ($data['start_number'] ?? 0);
+    $fps_arg = rtrim(rtrim(sprintf('%.3F', $fps), '0'), '.');
 
     if ($pattern !== '' && $folder_abs !== null && $start_number > 0) {
         $input = rtrim($folder_abs, '/') . '/' . $pattern;
         $start = $start_number + $in_frame;
+        // Input + output -r keeps a constant frame rate QuickTime accepts.
         $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate'
             . ' -framerate %%FPS%% -start_number %%START%% -i %%INPUT%%'
-            . ' -frames:v %%NFRAMES%% ' . $encode_opts . ' -an -vf %%VF%% %%TARGET%%';
+            . ' -r %%FPS%% -frames:v %%NFRAMES%% ' . $encode_opts . ' -an -vf %%VF%% %%TARGET%%';
         $params = [
-            '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
+            '%%FPS%%' => new CommandPlaceholderArg($fps_arg, [CommandPlaceholderArg::class, 'alwaysValid']),
             '%%START%%' => new CommandPlaceholderArg((string) $start, 'is_int_loose'),
             '%%INPUT%%' => new CommandPlaceholderArg($input, [CommandPlaceholderArg::class, 'alwaysValid']),
             '%%NFRAMES%%' => new CommandPlaceholderArg((string) $n_frames, 'is_int_loose'),
@@ -1197,9 +1356,9 @@ function image_sequence_framing_render_sequence(
 
         $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate'
             . ' -f concat -safe 0 -r %%FPS%% -i %%LIST%%'
-            . ' -frames:v %%NFRAMES%% ' . $encode_opts . ' -an -vf %%VF%% %%TARGET%%';
+            . ' -r %%FPS%% -frames:v %%NFRAMES%% ' . $encode_opts . ' -an -vf %%VF%% %%TARGET%%';
         $params = [
-            '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
+            '%%FPS%%' => new CommandPlaceholderArg($fps_arg, [CommandPlaceholderArg::class, 'alwaysValid']),
             '%%LIST%%' => new CommandPlaceholderArg($list_file, 'is_valid_rs_path'),
             '%%NFRAMES%%' => new CommandPlaceholderArg((string) $n_frames, 'is_int_loose'),
             '%%VF%%' => new CommandPlaceholderArg($vf, [CommandPlaceholderArg::class, 'alwaysValid']),
@@ -1219,7 +1378,10 @@ function image_sequence_framing_render_sequence(
 }
 
 /**
- * Render framing crop from a video resource (in→out frames, with audio).
+ * Render framing crop from a video resource (in→out range, with audio).
+ *
+ * Source timing is preserved (in/out via source fps). Output is forced to the
+ * requested FPS as a constant frame rate for QuickTime-friendly playback.
  */
 function image_sequence_framing_render_video(
     array $resource,
@@ -1227,7 +1389,8 @@ function image_sequence_framing_render_video(
     int $target_w,
     int $target_h,
     string $out_path,
-    string $encode_opts
+    string $encode_opts,
+    float $out_fps = 0.0
 ): bool {
     $ffmpeg = get_utility_path('ffmpeg');
     if ($ffmpeg === false) {
@@ -1236,7 +1399,8 @@ function image_sequence_framing_render_video(
 
     $ref = (int) ($resource['ref'] ?? 0);
     $marks = image_sequence_video_get_marks($ref);
-    $fps = max(0.0001, (float) $marks['fps']);
+    $source_fps = max(0.0001, (float) $marks['fps']);
+    $out_fps = image_sequence_framing_normalise_fps($out_fps);
     $in_frame = (int) $marks['in_frame'];
     $out_frame = (int) $marks['out_frame'];
     if ($out_frame < $in_frame) {
@@ -1245,7 +1409,10 @@ function image_sequence_framing_render_video(
         $out_frame = $tmp;
     }
     $n_frames = max(1, $out_frame - $in_frame + 1);
-    $ss = $in_frame / $fps;
+    $ss = $in_frame / $source_fps;
+    // Keep wall-clock duration of the selected range; resample to requested output FPS.
+    $duration = $n_frames / $source_fps;
+    $fps_arg = rtrim(rtrim(sprintf('%.3F', $out_fps), '0'), '.');
 
     $source = image_sequence_video_source_path($resource);
     if ($source === '' || !is_file($source)) {
@@ -1254,14 +1421,16 @@ function image_sequence_framing_render_video(
 
     $vf = image_sequence_framing_vf($box, $target_w, $target_h, '');
 
-    // Accurate seek after -i; keep AAC audio when present.
+    // Accurate seek after -i; AAC stereo @ 48 kHz for QuickTime-friendly audio.
+    $audio_opts = '-c:a aac -b:a 192k -ac 2 -ar 48000';
     $cmd = $ffmpeg . ' -hide_banner -loglevel error -y'
-        . ' -i %%SRC%% -ss %%TIME%% -frames:v %%NFRAMES%%'
-        . ' ' . $encode_opts . ' -c:a aac -b:a 192k -vf %%VF%% %%TARGET%%';
+        . ' -i %%SRC%% -ss %%TIME%% -t %%DUR%% -r %%FPS%%'
+        . ' ' . $encode_opts . ' ' . $audio_opts . ' -vf %%VF%% %%TARGET%%';
     $params = [
         '%%SRC%%' => new CommandPlaceholderArg($source, 'image_sequence_is_valid_shell_path'),
         '%%TIME%%' => new CommandPlaceholderArg(sprintf('%.6F', $ss), [CommandPlaceholderArg::class, 'alwaysValid']),
-        '%%NFRAMES%%' => new CommandPlaceholderArg((string) $n_frames, 'is_int_loose'),
+        '%%DUR%%' => new CommandPlaceholderArg(sprintf('%.6F', $duration), [CommandPlaceholderArg::class, 'alwaysValid']),
+        '%%FPS%%' => new CommandPlaceholderArg($fps_arg, [CommandPlaceholderArg::class, 'alwaysValid']),
         '%%VF%%' => new CommandPlaceholderArg($vf, [CommandPlaceholderArg::class, 'alwaysValid']),
         '%%TARGET%%' => new CommandPlaceholderArg($out_path, 'is_valid_rs_path'),
     ];
@@ -1273,7 +1442,7 @@ function image_sequence_framing_render_video(
         debug('image_sequence_framing_render_video audio pass: ' . $e->getMessage());
         @unlink($out_path);
         $cmd = $ffmpeg . ' -hide_banner -loglevel error -y'
-            . ' -i %%SRC%% -ss %%TIME%% -frames:v %%NFRAMES%%'
+            . ' -i %%SRC%% -ss %%TIME%% -t %%DUR%% -r %%FPS%%'
             . ' ' . $encode_opts . ' -an -vf %%VF%% %%TARGET%%';
         try {
             run_command($cmd, false, $params);

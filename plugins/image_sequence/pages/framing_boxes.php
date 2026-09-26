@@ -81,7 +81,12 @@ try {
             break;
 
         case 'render':
-            $result = image_sequence_framing_queue_render($ref, getval('box_ref', 0, true));
+            $result = image_sequence_framing_queue_render(
+                $ref,
+                getval('box_ref', 0, true),
+                (float) getval('fps', 0),
+                (string) getval('size', '4k')
+            );
             break;
 
         default:

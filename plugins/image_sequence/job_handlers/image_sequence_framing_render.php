@@ -12,12 +12,14 @@ global $baseurl, $offline_job_delete_completed;
 
 $resource = (int) ($job_data['resource'] ?? 0);
 $box_ref = (int) ($job_data['box_ref'] ?? 0);
+$fps = (float) ($job_data['fps'] ?? 0);
+$size = (string) ($job_data['size'] ?? '4k');
 if ($resource <= 0 || $box_ref <= 0) {
     job_queue_update($jobref, $job_data, STATUS_ERROR);
     return;
 }
 
-$ok = image_sequence_render_framing_box($box_ref);
+$ok = image_sequence_render_framing_box($box_ref, $fps, $size);
 if ($ok) {
     if (!empty($offline_job_delete_completed)) {
         job_queue_delete($jobref);

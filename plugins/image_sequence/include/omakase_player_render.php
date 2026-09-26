@@ -25,6 +25,7 @@ include_once __DIR__ . '/omakase_polyfill.php';
 function image_sequence_render_omakase_player(array $opts): void
 {
     global $lang, $baseurl_short, $ffmpeg_preview_extension;
+    global $image_sequence_framing_fps_default;
 
     $ref = (int) ($opts['ref'] ?? 0);
     $fps = (float) ($opts['fps'] ?? 30);
@@ -37,6 +38,9 @@ function image_sequence_render_omakase_player(array $opts): void
     $poster_url = image_sequence_player_media_url((string) ($opts['posterUrl'] ?? ''));
     $mode = (string) ($opts['mode'] ?? 'sequence');
     $aspect_ratio_css = (string) ($opts['aspectRatioCss'] ?? '');
+    $render_fps_default = image_sequence_framing_normalise_fps(
+        (float) ($image_sequence_framing_fps_default ?? 24)
+    );
     if ($aspect_ratio_css === '' && $ref > 0) {
         $preview_ext = $ffmpeg_preview_extension ?: 'mp4';
         $aspect_ratio_css = image_sequence_player_aspect_ratio_css($ref, 'pre', $preview_ext);
@@ -111,6 +115,8 @@ function image_sequence_render_omakase_player(array $opts): void
         'aspects' => $aspects_for_js,
         'defaultAspect' => $default_aspect,
         'framingBoxes' => $framing_boxes,
+        'renderFpsDefault' => $render_fps_default,
+        'renderSizeDefault' => '4k',
         'csrfRep' => json_decode(generate_csrf_js_object('set_representative_frame'), true) ?: [],
         'csrfInout' => json_decode(generate_csrf_js_object('set_inout_frames'), true) ?: [],
         'csrfFraming' => json_decode(generate_csrf_js_object('framing_boxes'), true) ?: [],
@@ -138,6 +144,13 @@ function image_sequence_render_omakase_player(array $opts): void
             'framingTierLow' => $lang['image_sequence_framing_tier_low'] ?? 'Below 1080p',
             'framingUnsaved' => $lang['image_sequence_framing_unsaved'] ?? 'Unsaved',
             'framingNoDims' => $lang['image_sequence_framing_no_dims'] ?? 'Source dimensions unknown — framing disabled.',
+            'framingPlay' => $lang['image_sequence_framing_play'] ?? 'Play',
+            'framingPlayTitle' => $lang['image_sequence_framing_play_title'] ?? 'Open in ResourceSpace player',
+            'framingDownload' => $lang['image_sequence_framing_download'] ?? 'Download',
+            'framingFps' => $lang['image_sequence_framing_fps'] ?? 'FPS',
+            'framingFpsTitle' => $lang['image_sequence_framing_fps_title'] ?? 'Playback frame rate for the rendered MP4',
+            'framingSize' => $lang['image_sequence_framing_size'] ?? 'Size',
+            'framingSizeTitle' => $lang['image_sequence_framing_size_title'] ?? 'Output frame size for the rendered MP4',
         ],
     ];
 
@@ -339,12 +352,36 @@ function image_sequence_render_omakase_player(array $opts): void
             <div class="image_sequence_framing_panel" id="image_sequence_framing_panel">
                 <div class="image_sequence_framing_panel_head">
                     <strong><?php echo escape($lang['image_sequence_framing'] ?? 'Framing'); ?></strong>
-                    <span class="image_sequence_framing_source_dims" id="image_sequence_framing_source_dims">
-                        <?php
-                        if ($source_width > 0 && $source_height > 0) {
-                            echo escape($source_width . ' × ' . $source_height);
-                        }
-                        ?>
+                    <span class="image_sequence_framing_panel_meta">
+                        <?php if ($can_edit) { ?>
+                            <label class="image_sequence_framing_ctrl_label" for="image_sequence_framing_size" title="<?php echo escape($lang['image_sequence_framing_size_title'] ?? 'Output frame size for the rendered MP4'); ?>">
+                                <?php echo escape($lang['image_sequence_framing_size'] ?? 'Size'); ?>
+                                <select id="image_sequence_framing_size" class="image_sequence_framing_size">
+                                    <option value="4k" selected><?php echo escape($lang['image_sequence_framing_size_4k'] ?? '4K'); ?></option>
+                                    <option value="1080p"><?php echo escape($lang['image_sequence_framing_size_1080p'] ?? '1080p'); ?></option>
+                                    <option value="720p"><?php echo escape($lang['image_sequence_framing_size_720p'] ?? '720p'); ?></option>
+                                </select>
+                            </label>
+                            <label class="image_sequence_framing_ctrl_label" for="image_sequence_framing_fps" title="<?php echo escape($lang['image_sequence_framing_fps_title'] ?? 'Playback frame rate for the rendered MP4'); ?>">
+                                <?php echo escape($lang['image_sequence_framing_fps'] ?? 'FPS'); ?>
+                                <input
+                                    type="number"
+                                    id="image_sequence_framing_fps"
+                                    class="image_sequence_framing_fps"
+                                    min="1"
+                                    max="120"
+                                    step="0.001"
+                                    value="<?php echo escape((string) $render_fps_default); ?>"
+                                >
+                            </label>
+                        <?php } ?>
+                        <span class="image_sequence_framing_source_dims" id="image_sequence_framing_source_dims">
+                            <?php
+                            if ($source_width > 0 && $source_height > 0) {
+                                echo escape($source_width . ' × ' . $source_height);
+                            }
+                            ?>
+                        </span>
                     </span>
                 </div>
                 <ul class="image_sequence_framing_list" id="image_sequence_framing_list"></ul>

@@ -34,9 +34,11 @@ function deliveryTargets(aspectW, aspectH) {
     const portrait = aspectH > aspectW;
     const uhdBox = portrait ? [2160, 3840] : [3840, 2160];
     const fhdBox = portrait ? [1080, 1920] : [1920, 1080];
+    const hdBox = portrait ? [720, 1280] : [1280, 720];
     return {
         uhd: fitAspect(aspectW, aspectH, uhdBox[0], uhdBox[1]),
         fhd: fitAspect(aspectW, aspectH, fhdBox[0], fhdBox[1]),
+        hd: fitAspect(aspectW, aspectH, hdBox[0], hdBox[1]),
     };
 }
 
@@ -246,6 +248,7 @@ function addCenteredBox(state) {
             render_message: '',
             alt_file: null,
             alt_url: '',
+            preview_url: '',
         }, state.sourceWidth, state.sourceHeight);
         box.dirty = true;
         state.boxes.push(box);
@@ -495,14 +498,36 @@ function renderList(state) {
         status.className = 'image_sequence_framing_status';
         if (box.render_status) {
             status.textContent = (box.render_message || box.render_status);
-            if (box.alt_url && box.render_status === 'ready') {
-                const link = document.createElement('a');
-                link.href = box.alt_url;
-                link.target = '_blank';
-                link.rel = 'noopener';
-                link.textContent = 'Download';
+            if (box.render_status === 'ready' && (box.preview_url || box.alt_url)) {
                 status.appendChild(document.createTextNode(' · '));
-                status.appendChild(link);
+                if (box.preview_url) {
+                    const play = document.createElement('a');
+                    play.href = box.preview_url;
+                    play.textContent = (state.lang && state.lang.framingPlay) || 'Play';
+                    play.title = (state.lang && state.lang.framingPlayTitle)
+                        || 'Open in ResourceSpace player';
+                    play.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (typeof CentralSpaceLoad === 'function') {
+                            CentralSpaceLoad(box.preview_url, true);
+                        } else {
+                            window.location.href = box.preview_url;
+                        }
+                    });
+                    status.appendChild(play);
+                }
+                if (box.alt_url) {
+                    if (box.preview_url) {
+                        status.appendChild(document.createTextNode(' · '));
+                    }
+                    const link = document.createElement('a');
+                    link.href = box.alt_url;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.textContent = (state.lang && state.lang.framingDownload) || 'Download';
+                    status.appendChild(link);
+                }
             }
         }
         li.appendChild(status);
@@ -775,6 +800,7 @@ function wireOverlayInteractions(state) {
                 render_message: '',
                 alt_file: null,
                 alt_url: '',
+                preview_url: '',
             }, state.sourceWidth, state.sourceHeight);
             box.dirty = true;
             state.boxes.push(box);
@@ -886,6 +912,8 @@ function renderBox(state, box) {
     postJson(state.framingUrl, {
         action: 'render',
         box_ref: box.ref,
+        fps: readRenderFps(state),
+        size: readRenderSize(state),
     }, state.csrfFraming)
         .done((data) => {
             if (data && data.ok && data.box) {
@@ -909,6 +937,34 @@ function renderBox(state, box) {
             state.busy = false;
             renderAll(state);
         });
+}
+
+function readRenderFps(state) {
+    const input = document.getElementById('image_sequence_framing_fps');
+    let fps = input ? Number(input.value) : Number(state.renderFpsDefault);
+    if (!Number.isFinite(fps) || fps <= 0) {
+        fps = Number(state.renderFpsDefault) || 24;
+    }
+    fps = Math.min(120, Math.max(1, fps));
+    if (input) {
+        input.value = String(fps);
+    }
+    state.renderFpsDefault = fps;
+    return fps;
+}
+
+function readRenderSize(state) {
+    const sel = document.getElementById('image_sequence_framing_size');
+    let size = sel ? String(sel.value || '') : String(state.renderSizeDefault || '4k');
+    size = size.toLowerCase();
+    if (size !== '4k' && size !== '1080p' && size !== '720p') {
+        size = '4k';
+    }
+    if (sel) {
+        sel.value = size;
+    }
+    state.renderSizeDefault = size;
+    return size;
 }
 
 function startPolling(state) {
@@ -1018,6 +1074,11 @@ export function initFramingBoxes(config) {
         csrfFraming: config.csrfFraming || {},
         canEdit: wantEdit && sourceWidth > 0 && sourceHeight > 0,
         _wantEdit: wantEdit,
+        mode: config.mode || 'sequence',
+        renderFpsDefault: Number(config.renderFpsDefault) > 0 ? Number(config.renderFpsDefault) : 24,
+        renderSizeDefault: (config.renderSizeDefault === '1080p' || config.renderSizeDefault === '720p')
+            ? config.renderSizeDefault
+            : '4k',
         sourceWidth,
         sourceHeight,
         aspects: config.aspects || [],
