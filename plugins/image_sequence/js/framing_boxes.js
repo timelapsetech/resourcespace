@@ -87,8 +87,11 @@ function setStatus(text, isError) {
 }
 
 /**
- * object-fit: contain content box of the video relative to the overlay.
- * Returns {left, top, width, height} in overlay-local CSS pixels, plus scale to source.
+ * Locate the object-fit:contain picture rect inside the overlay (CSS pixels),
+ * and the scale factors that map TRUE source pixels ↔ that rect.
+ *
+ * Browser zoom / player size / proxy resolution only affect the on-screen rect.
+ * Box x/y/width/height are always in original source pixels.
  */
 function videoContentRect(state) {
     const host = document.getElementById(state.playerElementId);
@@ -96,45 +99,67 @@ function videoContentRect(state) {
     if (!host || !overlay) {
         return null;
     }
+    if (!(state.sourceWidth > 0) || !(state.sourceHeight > 0)) {
+        return null;
+    }
+
     const video = host.querySelector('video');
     const overlayRect = overlay.getBoundingClientRect();
     if (overlayRect.width <= 0 || overlayRect.height <= 0) {
         return null;
     }
 
-    let mediaW = state.sourceWidth;
-    let mediaH = state.sourceHeight;
+    // Intrinsic size of whatever is playing (often a downscaled proxy).
+    // Used only to find letterboxing inside the <video> element — NOT as
+    // the coordinate space for stored boxes.
+    let intrinsicW = state.sourceWidth;
+    let intrinsicH = state.sourceHeight;
     if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-        mediaW = video.videoWidth;
-        mediaH = video.videoHeight;
-    }
-    if (mediaW <= 0 || mediaH <= 0) {
-        return null;
+        intrinsicW = video.videoWidth;
+        intrinsicH = video.videoHeight;
     }
 
-    // Prefer the video element's box; fall back to host.
     const target = video || host;
     const targetRect = target.getBoundingClientRect();
     const boxW = targetRect.width;
     const boxH = targetRect.height;
-    const scale = Math.min(boxW / mediaW, boxH / mediaH);
-    const contentW = mediaW * scale;
-    const contentH = mediaH * scale;
+    if (boxW <= 0 || boxH <= 0) {
+        return null;
+    }
+
+    // object-fit: contain — picture keeps intrinsic aspect inside the element.
+    const fit = Math.min(boxW / intrinsicW, boxH / intrinsicH);
+    const contentW = intrinsicW * fit;
+    const contentH = intrinsicH * fit;
     const contentLeft = (targetRect.left - overlayRect.left) + (boxW - contentW) / 2;
     const contentTop = (targetRect.top - overlayRect.top) + (boxH - contentH) / 2;
 
-    // Map from content pixels to source pixels.
-    const toSource = state.sourceWidth / mediaW;
-
+    // Direct CSS ↔ source mapping (proxy & display size cancel out).
     return {
         left: contentLeft,
         top: contentTop,
         width: contentW,
         height: contentH,
-        mediaW,
-        mediaH,
-        toSource,
-        fromSource: mediaW / state.sourceWidth,
+        cssPerSourceX: contentW / state.sourceWidth,
+        cssPerSourceY: contentH / state.sourceHeight,
+    };
+}
+
+function sourcePointFromCss(content, state, localX, localY) {
+    const x = ((localX - content.left) / content.width) * state.sourceWidth;
+    const y = ((localY - content.top) / content.height) * state.sourceHeight;
+    return {
+        x: clamp(x, 0, state.sourceWidth),
+        y: clamp(y, 0, state.sourceHeight),
+    };
+}
+
+function cssRectFromSourceBox(content, box) {
+    return {
+        left: content.left + box.x * content.cssPerSourceX,
+        top: content.top + box.y * content.cssPerSourceY,
+        width: box.width * content.cssPerSourceX,
+        height: box.height * content.cssPerSourceY,
     };
 }
 
@@ -186,86 +211,157 @@ function makeLocalId() {
 }
 
 function addCenteredBox(state) {
-    if (state.sourceWidth <= 0 || state.sourceHeight <= 0) {
-        tryAdoptVideoDimensions(state);
-    }
-    if (!state.canEdit) {
+    const ready = ensureSourceDimensions(state);
+    const run = () => {
+        if (!state.canEdit || state.sourceWidth <= 0 || state.sourceHeight <= 0) {
+            setStatus(
+                (state.lang && state.lang.framingNoDims)
+                    || 'Source dimensions unknown — framing disabled.',
+                true
+            );
+            return;
+        }
+        const aspect = selectedAspect(state);
+        const fit = fitAspect(aspect.w, aspect.h, state.sourceWidth, state.sourceHeight);
+        // Start at ~80% of max fit so the user can still grow it.
+        let width = even(Math.floor(fit.width * 0.8));
+        let height = even(Math.round((width * aspect.h) / aspect.w));
+        width = Math.max(2, width);
+        height = Math.max(2, height);
+        const x = even(Math.floor((state.sourceWidth - width) / 2));
+        const y = even(Math.floor((state.sourceHeight - height) / 2));
+        const box = normalizeBox({
+            localId: makeLocalId(),
+            ref: 0,
+            label: aspect.label,
+            aspect_w: aspect.w,
+            aspect_h: aspect.h,
+            aspect_label: aspect.label,
+            x,
+            y,
+            width,
+            height,
+            dirty: true,
+            render_status: '',
+            render_message: '',
+            alt_file: null,
+            alt_url: '',
+        }, state.sourceWidth, state.sourceHeight);
+        box.dirty = true;
+        state.boxes.push(box);
+        state.selectedId = box.ref || box.localId;
+        renderAll(state);
         setStatus(
-            (state.lang && state.lang.framingNoDims)
-                || 'Source dimensions unknown — framing disabled.',
-            true
+            'Framing box added (' + box.width + '×' + box.height
+            + ' source px) — drag to adjust, then Save.'
         );
+    };
+
+    if (ready && typeof ready.then === 'function') {
+        ready.then((ok) => {
+            if (ok) {
+                run();
+            } else {
+                setStatus(
+                    (state.lang && state.lang.framingNoDims)
+                        || 'Source dimensions unknown — framing disabled.',
+                    true
+                );
+            }
+        });
         return;
     }
-    if (state.sourceWidth <= 0 || state.sourceHeight <= 0) {
-        setStatus(
-            (state.lang && state.lang.framingNoDims)
-                || 'Source dimensions unknown — framing disabled.',
-            true
-        );
-        return;
-    }
-    const aspect = selectedAspect(state);
-    const fit = fitAspect(aspect.w, aspect.h, state.sourceWidth, state.sourceHeight);
-    // Start at ~80% of max fit so the user can still grow it.
-    let width = even(Math.floor(fit.width * 0.8));
-    let height = even(Math.round((width * aspect.h) / aspect.w));
-    width = Math.max(2, width);
-    height = Math.max(2, height);
-    const x = even(Math.floor((state.sourceWidth - width) / 2));
-    const y = even(Math.floor((state.sourceHeight - height) / 2));
-    const box = normalizeBox({
-        localId: makeLocalId(),
-        ref: 0,
-        label: aspect.label,
-        aspect_w: aspect.w,
-        aspect_h: aspect.h,
-        aspect_label: aspect.label,
-        x,
-        y,
-        width,
-        height,
-        dirty: true,
-        render_status: '',
-        render_message: '',
-        alt_file: null,
-        alt_url: '',
-    }, state.sourceWidth, state.sourceHeight);
-    box.dirty = true;
-    state.boxes.push(box);
-    state.selectedId = box.ref || box.localId;
-    renderAll(state);
-    setStatus('Framing box added — drag to adjust, then Save.');
+    run();
 }
 
 /**
- * Adopt the playing video's intrinsic size when PHP couldn't resolve source dims.
- * @returns {boolean}
+ * Ensure state.sourceWidth/Height are TRUE original pixels from the server.
+ * Never fall back to the browser's video.videoWidth (that is the proxy).
+ *
+ * @returns {JQuery.Promise<boolean>|boolean}
  */
-function tryAdoptVideoDimensions(state) {
-    if (!state || state.sourceWidth > 0) {
-        return state && state.sourceWidth > 0;
-    }
-    const host = document.getElementById(state.playerElementId);
-    const video = host ? host.querySelector('video') : null;
-    if (!video || !(video.videoWidth > 0) || !(video.videoHeight > 0)) {
+function ensureSourceDimensions(state) {
+    if (!state) {
         return false;
     }
-    state.sourceWidth = video.videoWidth;
-    state.sourceHeight = video.videoHeight;
-    const dimsEl = document.getElementById('image_sequence_framing_source_dims');
-    if (dimsEl) {
-        dimsEl.textContent = state.sourceWidth + ' × ' + state.sourceHeight;
+    if (state.sourceWidth > 0 && state.sourceHeight > 0) {
+        updateSourceDimsLabel(state);
+        return true;
     }
+    if (!state.framingUrl) {
+        return false;
+    }
+    if (state._dimsFetch) {
+        return state._dimsFetch;
+    }
+
+    state._dimsFetch = getJson(state.framingUrl, {action: 'list', ajax: 'true'})
+        .then((data) => {
+            state._dimsFetch = null;
+            const w = Number(data && data.source_width) || 0;
+            const h = Number(data && data.source_height) || 0;
+            if (w > 0 && h > 0) {
+                applySourceDimensions(state, w, h);
+                return true;
+            }
+            return false;
+        })
+        .catch(() => {
+            state._dimsFetch = null;
+            return false;
+        });
+
+    return state._dimsFetch;
+}
+
+function applySourceDimensions(state, width, height) {
+    const w = Math.floor(Number(width) || 0);
+    const h = Math.floor(Number(height) || 0);
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    const prevW = state.sourceWidth;
+    const prevH = state.sourceHeight;
+    state.sourceWidth = w;
+    state.sourceHeight = h;
+    updateSourceDimsLabel(state);
+
+    // If we previously had wrong/proxy dims, rescale any in-progress boxes.
+    if (prevW > 0 && prevH > 0 && (prevW !== w || prevH !== h)) {
+        const sx = w / prevW;
+        const sy = h / prevH;
+        state.boxes = state.boxes.map((box) => normalizeBox({
+            ...box,
+            x: Math.round(box.x * sx),
+            y: Math.round(box.y * sy),
+            width: Math.round(box.width * sx),
+            height: Math.round(box.height * sy),
+        }, w, h));
+    } else {
+        state.boxes = state.boxes.map((box) => normalizeBox(box, w, h));
+    }
+
     if (state._wantEdit) {
         state.canEdit = true;
         const overlay = document.getElementById('image_sequence_framing_overlay');
         if (overlay) {
             overlay.classList.remove('is-readonly');
         }
-        wireOverlayInteractions(state);
     }
-    return true;
+    renderAll(state);
+}
+
+function updateSourceDimsLabel(state) {
+    const dimsEl = document.getElementById('image_sequence_framing_source_dims');
+    if (!dimsEl || !(state.sourceWidth > 0)) {
+        return;
+    }
+    dimsEl.textContent = 'Source ' + state.sourceWidth + ' × ' + state.sourceHeight + ' px';
+}
+
+/** @deprecated name kept for call sites — always resolves true source dims */
+function tryAdoptVideoDimensions(state) {
+    return ensureSourceDimensions(state);
 }
 
 function findBox(state, id) {
@@ -304,18 +400,16 @@ function renderOverlay(state) {
         }
         el.dataset.boxId = String(id);
 
-        const left = content.left + box.x * content.fromSource;
-        const top = content.top + box.y * content.fromSource;
-        const width = box.width * content.fromSource;
-        const height = box.height * content.fromSource;
-        el.style.left = left + 'px';
-        el.style.top = top + 'px';
-        el.style.width = width + 'px';
-        el.style.height = height + 'px';
+        const rect = cssRectFromSourceBox(content, box);
+        el.style.left = rect.left + 'px';
+        el.style.top = rect.top + 'px';
+        el.style.width = rect.width + 'px';
+        el.style.height = rect.height + 'px';
 
         const label = document.createElement('div');
         label.className = 'image_sequence_framing_box_label';
-        label.textContent = (box.label || box.aspect_label || '') + ' · ' + box.width + '×' + box.height;
+        label.textContent = (box.label || box.aspect_label || '')
+            + ' · ' + box.width + '×' + box.height + ' px';
         el.appendChild(label);
 
         if (state.canEdit) {
@@ -386,7 +480,7 @@ function renderList(state) {
         const meta = document.createElement('span');
         meta.className = 'image_sequence_framing_meta';
         meta.textContent = (box.aspect_label || (box.aspect_w + ':' + box.aspect_h))
-            + ' · ' + box.width + '×' + box.height
+            + ' · ' + box.width + '×' + box.height + ' px'
             + (box.dirty ? ' · ' + (lang.framingUnsaved || 'Unsaved') : '');
         head.appendChild(meta);
 
@@ -479,12 +573,7 @@ function pointerToSource(state, clientX, clientY) {
     const rect = overlay.getBoundingClientRect();
     const localX = clientX - rect.left;
     const localY = clientY - rect.top;
-    const mediaX = (localX - content.left) / content.fromSource;
-    const mediaY = (localY - content.top) / content.fromSource;
-    return {
-        x: clamp(mediaX, 0, state.sourceWidth),
-        y: clamp(mediaY, 0, state.sourceHeight),
-    };
+    return sourcePointFromCss(content, state, localX, localY);
 }
 
 function wireOverlayInteractions(state) {
@@ -598,7 +687,7 @@ function wireOverlayInteractions(state) {
         .off('mousedown.imgseqFraming', '#image_sequence_framing_overlay')
         .on('mousedown.imgseqFraming', '#image_sequence_framing_overlay', function (e) {
             if (state.sourceWidth <= 0) {
-                tryAdoptVideoDimensions(state);
+                ensureSourceDimensions(state);
             }
             if (!state.canEdit || !state.visible || e.button !== 0) {
                 return;
@@ -973,28 +1062,32 @@ export function initFramingBoxes(config) {
     }
 
     function finishInit() {
-        tryAdoptVideoDimensions(state);
-        const dimsEl = document.getElementById('image_sequence_framing_source_dims');
-        if (dimsEl && state.sourceWidth > 0) {
-            dimsEl.textContent = state.sourceWidth + ' × ' + state.sourceHeight;
+        const ready = ensureSourceDimensions(state);
+        const after = () => {
+            updateSourceDimsLabel(state);
+            if (wantEdit && state.sourceWidth <= 0) {
+                setStatus(
+                    (config.lang && config.lang.framingNoDims)
+                        || 'Source dimensions unknown — framing disabled.',
+                    true
+                );
+            }
+            renderAll(state);
+        };
+        if (ready && typeof ready.then === 'function') {
+            ready.then(after);
+        } else {
+            after();
         }
-        if (wantEdit && state.sourceWidth <= 0) {
-            setStatus(
-                (config.lang && config.lang.framingNoDims)
-                    || 'Source dimensions unknown — framing disabled.',
-                true
-            );
-        }
-        renderAll(state);
     }
 
-    // Wait for Omakase chroming + video metadata so we can adopt proxy dims if needed.
+    // Wait for Omakase chroming so the overlay can map onto the video element.
     let tries = 0;
     const boot = setInterval(() => {
         tries++;
         const host = document.getElementById(state.playerElementId);
         const video = host ? host.querySelector('video') : null;
-        if ((video && video.videoWidth > 0) || tries > 40) {
+        if ((video && video.videoWidth > 0) || state.sourceWidth > 0 || tries > 40) {
             clearInterval(boot);
             finishInit();
         }

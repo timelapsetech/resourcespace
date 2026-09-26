@@ -245,8 +245,6 @@ function image_sequence_probe_media_dimensions(string $path): array
 
 function image_sequence_source_dimensions(array $resource): array
 {
-    global $ffmpeg_preview_extension;
-
     $ref = (int) ($resource['ref'] ?? 0);
     if ($ref <= 0) {
         return ['width' => 0, 'height' => 0];
@@ -286,18 +284,15 @@ function image_sequence_source_dimensions(array $resource): array
         $poster = get_resource_path($ref, true, 'pre', false, 'jpg');
         if (is_string($poster) && is_file($poster)) {
             $probed = image_sequence_probe_media_dimensions($poster);
-            if ($probed['width'] > 0 && $probed['height'] > 0) {
+            // Only trust poster if it looks like a full-res still (not a tiny thumb).
+            // Sequence posters are extracted from member frames at full resolution.
+            if ($probed['width'] >= 640 && $probed['height'] >= 360) {
                 return $probed;
             }
         }
 
-        // Last resort: proxy video intrinsic size (UI can still frame; render scales up).
-        $ext = $ffmpeg_preview_extension ?: 'mp4';
-        $proxy = get_resource_path($ref, true, 'pre', false, $ext);
-        if (is_string($proxy) && is_file($proxy)) {
-            return image_sequence_probe_media_dimensions($proxy);
-        }
-
+        // Do NOT fall back to the proxy video size — that would make boxes lie
+        // about source pixels. Callers/UI must wait for real dims.
         return ['width' => 0, 'height' => 0];
     }
 
@@ -305,13 +300,20 @@ function image_sequence_source_dimensions(array $resource): array
         return ['width' => 0, 'height' => 0];
     }
 
-    foreach (
-        [
-            image_sequence_video_source_path($resource),
-            image_sequence_video_playback_path($resource),
-        ] as $path
-    ) {
-        $probed = image_sequence_probe_media_dimensions($path);
+    // Prefer the original master; only then the playback file.
+    $original = image_sequence_video_source_path($resource);
+    $probed = image_sequence_probe_media_dimensions($original);
+    if ($probed['width'] > 0 && $probed['height'] > 0) {
+        return $probed;
+    }
+
+    // If "source" was already the preview (original missing), use that — it's
+    // the best available master for this resource.
+    $playback = image_sequence_video_playback_path($resource);
+    if ($playback !== '' && $playback !== $original) {
+        // Prefer not to use a downscaled 'pre' proxy as "source" when we can
+        // detect it is the preview size path. Still probe originals first above.
+        $probed = image_sequence_probe_media_dimensions($playback);
         if ($probed['width'] > 0 && $probed['height'] > 0) {
             return $probed;
         }
