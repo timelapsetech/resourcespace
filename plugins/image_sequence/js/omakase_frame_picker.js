@@ -8,6 +8,7 @@ import {
     OmakasePlayer,
     PlayerEventType,
 } from '@byomakase/omakase-player';
+import {destroyFramingBoxes, initFramingBoxes} from './framing_boxes.js';
 
 let activePlayer = null;
 let activeSubs = [];
@@ -32,6 +33,7 @@ function destroyActivePlayer() {
     }
     document.removeEventListener('fullscreenchange', onFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    destroyFramingBoxes();
     if (activePlayer) {
         try {
             activePlayer.destroy();
@@ -867,6 +869,7 @@ export function initImageSequenceOmakase(config) {
                         config.frameCount || 0
                     );
                 }
+                initFramingBoxes(config);
                 // Start at the in point (frame 0 when none is set), not the representative frame.
                 const startFrame = clampFrame(config.inFrame, config.frameCount || 0);
                 if (startFrame > 0) {

@@ -67,6 +67,18 @@ $image_sequence_video_nle = true;
 # Optional: limit video NLE metadata fields to these resource type IDs (empty = auto-detect Video types).
 $image_sequence_video_restypes = [];
 
+# Framing boxes: aspect-ratio presets [label => [w, h]]. Default is 16:9.
+$image_sequence_framing_aspects = [
+    '16:9' => [16, 9],
+    '9:16' => [9, 16],
+    '1:1' => [1, 1],
+    '4:5' => [4, 5],
+    '2.39:1' => [239, 100],
+];
+$image_sequence_framing_default_aspect = '16:9';
+# FFmpeg encode flags for framing crop renders (4K output).
+$image_sequence_framing_render_options = '-c:v libx264 -crf 16 -preset slow -pix_fmt yuv420p -movflags +faststart';
+
 # Protect field configs from accidental deletion when plugin is active.
 $image_sequence_fieldvars = [
     'image_sequence_framecount_field',

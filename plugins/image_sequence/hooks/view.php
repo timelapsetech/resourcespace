@@ -57,6 +57,9 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
             $video_url = get_resource_path((int) $ref, false, 'pre', false, $ext, true, 1, false, '', -1, true);
             $poster_url = get_resource_path((int) $ref, false, 'pre', false, 'jpg', true, 1, false, '', -1, true);
 
+            $dims = image_sequence_source_dimensions($resource);
+            image_sequence_ensure_framing_table();
+
             image_sequence_render_omakase_player([
                 'ref' => (int) $ref,
                 'mode' => 'sequence',
@@ -68,6 +71,9 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
                 'videoUrl' => $video_url,
                 'posterUrl' => $poster_url,
                 'canEdit' => (bool) $can_edit,
+                'sourceWidth' => (int) $dims['width'],
+                'sourceHeight' => (int) $dims['height'],
+                'framingBoxes' => image_sequence_framing_get_boxes((int) $ref),
             ]);
 
             return true;
@@ -104,6 +110,8 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
 
         $marks = image_sequence_video_get_marks((int) $ref);
         $can_edit = get_edit_access((int) $ref);
+        $dims = image_sequence_source_dimensions($resource);
+        image_sequence_ensure_framing_table();
 
         image_sequence_render_omakase_player([
             'ref' => (int) $ref,
@@ -117,6 +125,9 @@ function HookImage_sequenceViewRenderinnerresourcepreview()
             'posterUrl' => $poster_url,
             'canEdit' => (bool) $can_edit,
             'aspectRatioCss' => image_sequence_player_aspect_ratio_css((int) $ref, $videosize, $videoext),
+            'sourceWidth' => (int) $dims['width'],
+            'sourceHeight' => (int) $dims['height'],
+            'framingBoxes' => image_sequence_framing_get_boxes((int) $ref),
         ]);
 
         return true;

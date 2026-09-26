@@ -16,7 +16,10 @@ include_once __DIR__ . '/omakase_polyfill.php';
  *   posterUrl: string,
  *   canEdit: bool,
  *   mode?: string,
- *   aspectRatioCss?: string
+ *   aspectRatioCss?: string,
+ *   sourceWidth?: int,
+ *   sourceHeight?: int,
+ *   framingBoxes?: list<array<string, mixed>>
  * } $opts
  */
 function image_sequence_render_omakase_player(array $opts): void
@@ -42,6 +45,35 @@ function image_sequence_render_omakase_player(array $opts): void
         $aspect_ratio_css = '16 / 9';
     }
 
+    $source_width = (int) ($opts['sourceWidth'] ?? 0);
+    $source_height = (int) ($opts['sourceHeight'] ?? 0);
+    $framing_boxes = is_array($opts['framingBoxes'] ?? null) ? $opts['framingBoxes'] : [];
+    if ($ref > 0 && ($source_width <= 0 || $source_height <= 0 || $framing_boxes === [])) {
+        image_sequence_ensure_framing_table();
+        $resource_data = get_resource_data($ref);
+        if (is_array($resource_data)) {
+            if ($source_width <= 0 || $source_height <= 0) {
+                $dims = image_sequence_source_dimensions($resource_data);
+                $source_width = (int) $dims['width'];
+                $source_height = (int) $dims['height'];
+            }
+            if ($framing_boxes === []) {
+                $framing_boxes = image_sequence_framing_get_boxes($ref);
+            }
+        }
+    }
+
+    $aspect_presets = image_sequence_framing_aspect_presets();
+    $aspects_for_js = [];
+    foreach ($aspect_presets as $label => $pair) {
+        $aspects_for_js[] = [
+            'label' => (string) $label,
+            'w' => (int) $pair[0],
+            'h' => (int) $pair[1],
+        ];
+    }
+    $default_aspect = image_sequence_framing_default_aspect_label();
+
     $player_element_id = 'image_sequence_omakase_player_' . $ref;
     $player_style = '--omakase-player-aspect-ratio: ' . $aspect_ratio_css . ';';
 
@@ -49,6 +81,9 @@ function image_sequence_render_omakase_player(array $opts): void
         'ref' => $ref,
     ]);
     $set_inout_url = generateURL($baseurl_short . 'plugins/image_sequence/pages/set_inout_frames.php', [
+        'ref' => $ref,
+    ]);
+    $framing_url = generateURL($baseurl_short . 'plugins/image_sequence/pages/framing_boxes.php', [
         'ref' => $ref,
     ]);
     $view_url = generateURL($baseurl_short . 'pages/view.php', [
@@ -69,9 +104,16 @@ function image_sequence_render_omakase_player(array $opts): void
         'canEdit' => $can_edit,
         'repUrl' => $set_rep_url,
         'inoutUrl' => $set_inout_url,
+        'framingUrl' => $framing_url,
         'viewUrl' => $view_url,
+        'sourceWidth' => $source_width,
+        'sourceHeight' => $source_height,
+        'aspects' => $aspects_for_js,
+        'defaultAspect' => $default_aspect,
+        'framingBoxes' => $framing_boxes,
         'csrfRep' => json_decode(generate_csrf_js_object('set_representative_frame'), true) ?: [],
         'csrfInout' => json_decode(generate_csrf_js_object('set_inout_frames'), true) ?: [],
+        'csrfFraming' => json_decode(generate_csrf_js_object('framing_boxes'), true) ?: [],
         'lang' => [
             'markedIn' => $lang['image_sequence_marked_in'] ?? 'In point marked (click Save in/out to store).',
             'markedOut' => $lang['image_sequence_marked_out'] ?? 'Out point marked (click Save in/out to store).',
@@ -85,6 +127,17 @@ function image_sequence_render_omakase_player(array $opts): void
                 : ($lang['image_sequence_rep_frame_set'] ?? 'Representative frame updated.'),
             'repFailed' => $lang['image_sequence_rep_frame_failed'] ?? 'Could not set representative frame.',
             'loadFailed' => $lang['image_sequence_player_load_failed'] ?? 'Could not load preview player.',
+            'framingSaved' => $lang['image_sequence_framing_saved'] ?? 'Framing box saved.',
+            'framingSaveFailed' => $lang['image_sequence_framing_save_failed'] ?? 'Could not save framing box.',
+            'framingDeleted' => $lang['image_sequence_framing_deleted'] ?? 'Framing box deleted.',
+            'framingDeleteFailed' => $lang['image_sequence_framing_delete_failed'] ?? 'Could not delete framing box.',
+            'framingRenderQueued' => $lang['image_sequence_framing_render_queued'] ?? 'Render queued…',
+            'framingRenderFailed' => $lang['image_sequence_framing_render_failed'] ?? 'Framing render failed.',
+            'framingTierOk' => $lang['image_sequence_framing_tier_ok'] ?? '≥ 4K',
+            'framingTierWarn' => $lang['image_sequence_framing_tier_warn'] ?? 'Below 4K (will upscale)',
+            'framingTierLow' => $lang['image_sequence_framing_tier_low'] ?? 'Below 1080p',
+            'framingUnsaved' => $lang['image_sequence_framing_unsaved'] ?? 'Unsaved',
+            'framingNoDims' => $lang['image_sequence_framing_no_dims'] ?? 'Source dimensions unknown — framing disabled.',
         ],
     ];
 
@@ -105,27 +158,36 @@ function image_sequence_render_omakase_player(array $opts): void
             'fs_enter' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3H4zm10-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm14 0h2v5h-5v-2h3v-3z"/></svg>',
             'fs_exit' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H7v3H4v2h5V4zm10 3h-3V4h-2v5h5V7zM7 17v3h2v-5H4v2h3zm10 0h3v-2h-5v5h2v-3z"/></svg>',
             'counter' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5zm0 5.5h10v3H4v-3zm0 5.5h13v3H4v-3z"/></svg>',
+            'add' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg>',
+            'eye' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c5.2 0 9.5 3.3 11 7-1.5 3.7-5.8 7-11 7S2.5 15.7 1 12c1.5-3.7 5.8-7 11-7zm0 2.5A4.5 4.5 0 1 0 16.5 12 4.5 4.5 0 0 0 12 7.5z"/></svg>',
         ];
 
         return $icons[$name] ?? '';
     };
     ?>
     <div id="previewimagewrapper" class="image_sequence_omakase_wrap">
-        <div
-            id="<?php echo escape($player_element_id); ?>"
-            class="image_sequence_omakase_player"
-            style="<?php echo escape($player_style); ?>"
-        ></div>
-        <div
-            id="image_sequence_frame_overlay"
-            class="image_sequence_frame_overlay"
-            hidden
-            aria-hidden="true"
-        >
-            <span class="nle-overlay-label">FRAME</span>
-            <span class="nle-overlay-frame" id="image_sequence_overlay_frame">0</span>
-            <span class="nle-overlay-sep">/</span>
-            <span class="nle-overlay-total" id="image_sequence_overlay_total"><?php echo (int) $frame_count; ?></span>
+        <div class="image_sequence_player_stage">
+            <div
+                id="<?php echo escape($player_element_id); ?>"
+                class="image_sequence_omakase_player"
+                style="<?php echo escape($player_style); ?>"
+            ></div>
+            <div
+                id="image_sequence_framing_overlay"
+                class="image_sequence_framing_overlay"
+                aria-hidden="false"
+            ></div>
+            <div
+                id="image_sequence_frame_overlay"
+                class="image_sequence_frame_overlay"
+                hidden
+                aria-hidden="true"
+            >
+                <span class="nle-overlay-label">FRAME</span>
+                <span class="nle-overlay-frame" id="image_sequence_overlay_frame">0</span>
+                <span class="nle-overlay-sep">/</span>
+                <span class="nle-overlay-total" id="image_sequence_overlay_total"><?php echo (int) $frame_count; ?></span>
+            </div>
         </div>
         <div class="image_sequence_nle" data-can-edit="<?php echo $can_edit ? '1' : '0'; ?>" data-mode="<?php echo escape($mode); ?>">
             <div class="image_sequence_nle_readout" aria-live="polite">
@@ -223,6 +285,37 @@ function image_sequence_render_omakase_player(array $opts): void
                             <span><?php echo escape($lang['image_sequence_save_inout_short'] ?? 'Save'); ?></span>
                         </button>
                     </div>
+
+                    <span class="image_sequence_nle_sep" aria-hidden="true"></span>
+                    <div class="image_sequence_nle_group nle-group-framing" role="group" aria-label="<?php echo escape($lang['image_sequence_framing'] ?? 'Framing'); ?>">
+                        <label class="nle-framing-aspect-label" for="image_sequence_framing_aspect">
+                            <span class="nle-sr-only"><?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?></span>
+                            <select id="image_sequence_framing_aspect" class="nle-framing-aspect" title="<?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?>">
+                                <?php foreach ($aspect_presets as $label => $pair) { ?>
+                                    <option
+                                        value="<?php echo escape((string) $label); ?>"
+                                        data-w="<?php echo (int) $pair[0]; ?>"
+                                        data-h="<?php echo (int) $pair[1]; ?>"
+                                        <?php echo ((string) $label === $default_aspect) ? 'selected' : ''; ?>
+                                    ><?php echo escape((string) $label); ?></option>
+                                <?php } ?>
+                            </select>
+                        </label>
+                        <button type="button" class="image_sequence_nle_btn nle-framing-add" id="image_sequence_framing_add" title="<?php echo escape($lang['image_sequence_framing_add'] ?? 'Add framing box'); ?>">
+                            <?php echo $ico('add'); ?>
+                            <span><?php echo escape($lang['image_sequence_framing_add_short'] ?? 'Box'); ?></span>
+                        </button>
+                        <button type="button" class="image_sequence_nle_btn nle-framing-toggle" id="image_sequence_framing_toggle" title="<?php echo escape($lang['image_sequence_framing_toggle'] ?? 'Show / hide framing boxes'); ?>" aria-pressed="true">
+                            <?php echo $ico('eye'); ?>
+                        </button>
+                    </div>
+                <?php } else { ?>
+                    <span class="image_sequence_nle_sep" aria-hidden="true"></span>
+                    <div class="image_sequence_nle_group nle-group-framing" role="group" aria-label="<?php echo escape($lang['image_sequence_framing'] ?? 'Framing'); ?>">
+                        <button type="button" class="image_sequence_nle_btn nle-framing-toggle" id="image_sequence_framing_toggle" title="<?php echo escape($lang['image_sequence_framing_toggle'] ?? 'Show / hide framing boxes'); ?>" aria-pressed="true">
+                            <?php echo $ico('eye'); ?>
+                        </button>
+                    </div>
                 <?php } ?>
 
                 <span class="image_sequence_nle_sep" aria-hidden="true"></span>
@@ -240,6 +333,24 @@ function image_sequence_render_omakase_player(array $opts): void
                     <?php echo escape($lang['image_sequence_nle_hint'] ?? 'I/O mark · Shift+I/O go to mark · ←/→ frame · Space play · C counter · F fullscreen'); ?>
                 </p>
             </div>
+
+            <div class="image_sequence_framing_panel" id="image_sequence_framing_panel">
+                <div class="image_sequence_framing_panel_head">
+                    <strong><?php echo escape($lang['image_sequence_framing'] ?? 'Framing'); ?></strong>
+                    <span class="image_sequence_framing_source_dims" id="image_sequence_framing_source_dims">
+                        <?php
+                        if ($source_width > 0 && $source_height > 0) {
+                            echo escape($source_width . ' × ' . $source_height);
+                        }
+                        ?>
+                    </span>
+                </div>
+                <ul class="image_sequence_framing_list" id="image_sequence_framing_list"></ul>
+                <p class="image_sequence_framing_empty" id="image_sequence_framing_empty">
+                    <?php echo escape($lang['image_sequence_framing_empty'] ?? 'No framing boxes yet. Choose an aspect and click Add box, or drag on the video.'); ?>
+                </p>
+            </div>
+
             <span id="image_sequence_frame_status" class="image_sequence_nle_status"></span>
         </div>
     </div>

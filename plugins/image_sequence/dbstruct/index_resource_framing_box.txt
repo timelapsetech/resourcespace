@@ -1,0 +1,1 @@
+resource_framing_box,1,resource,1,resource,A,0,,,YES,BTREE,

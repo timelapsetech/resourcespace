@@ -4,6 +4,7 @@ use Montala\ResourceSpace\CommandPlaceholderArg;
 
 include_once __DIR__ . '/cadence_functions.php';
 include_once __DIR__ . '/video_nle_functions.php';
+include_once __DIR__ . '/framing_functions.php';
 include_once dirname(__DIR__, 3) . '/include/image_processing.php';
 
 /**
@@ -1307,6 +1308,8 @@ function image_sequence_ensure_db_indexes(): void
  */
 function image_sequence_ensure_db_columns(): void
 {
+    image_sequence_ensure_framing_table();
+
     $exists = (int) ps_value(
         "SELECT COUNT(*) value FROM information_schema.tables
          WHERE table_schema = DATABASE() AND table_name = 'resource_image_sequence'",
@@ -4297,6 +4300,9 @@ function image_sequence_cleanup_resource(int $ref): void
 {
     // Ensure permanent delete is not blocked if a proxy job left the lock set.
     image_sequence_clear_transcoding_lock($ref);
+
+    // Framing boxes (and their alt files) for sequences and videos.
+    image_sequence_framing_cleanup_resource($ref);
 
     $data = image_sequence_get_data($ref);
     if ($data === null) {
