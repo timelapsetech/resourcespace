@@ -631,8 +631,12 @@ function image_sequence_extract_frame_metadata(int $ref, string $frame_path): vo
  * Whether a still is shot upside down (EXIF Orientation = Rotate 180).
  *
  * Time-lapse rigs are frequently mounted inverted; the camera records
- * Orientation 3 so viewers can auto-rotate. FFmpeg's image demuxer does not
- * auto-rotate, so we detect this and bake a 180° rotation into the proxy/poster.
+ * Orientation 3 so viewers can auto-rotate. We detect this and bake a 180°
+ * rotation into the proxy/poster ourselves.
+ *
+ * Important: FFmpeg 6+ may also auto-insert rotate filters from EXIF. All still
+ * inputs must pass -noautorotate so we do not double-rotate (which leaves the
+ * proxy upside down again).
  */
 function image_sequence_frame_is_inverted(string $frame_path): bool
 {
@@ -707,6 +711,8 @@ function image_sequence_is_inverted(int $ref): bool
 /**
  * FFmpeg video-filter fragment that rotates an inverted sequence upright, or ''.
  * 180° = horizontal flip + vertical flip.
+ *
+ * Pair with -noautorotate on the still input so FFmpeg does not also apply EXIF.
  */
 function image_sequence_orientation_vf(int $ref): string
 {
@@ -3218,8 +3224,9 @@ function image_sequence_generate_proxy(int $ref): bool
     // Height -2 = auto, even. min(W,iw) avoids upscaling smaller stills.
     $scale = "scale='trunc(min({$width}\\,iw)/2)*2':-2,setsar=1";
 
-    // Upside-down source frames (EXIF Rotate 180): FFmpeg does not auto-rotate stills,
-    // so bake a 180° flip ahead of the scale filter to render the proxy upright.
+    // Upside-down source frames (EXIF Rotate 180): bake a 180° flip ahead of scale.
+    // FFmpeg 6+ may also auto-rotate from EXIF — always pass -noautorotate on still
+    // inputs so our explicit filter is the only orientation correction applied.
     $orient_vf = image_sequence_orientation_vf($ref);
     $vf = $orient_vf !== '' ? $orient_vf . ',' . $scale : $scale;
 
@@ -3228,7 +3235,7 @@ function image_sequence_generate_proxy(int $ref): bool
         $folder_abs = image_sequence_relative_to_absolute((string) $data['folder_path']);
         if ($pattern !== '' && $folder_abs !== null && (int) $data['start_number'] > 0) {
             $input = rtrim($folder_abs, '/') . '/' . $pattern;
-            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -framerate %%FPS%% -start_number %%START%% -i %%INPUT%% '
+            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate -framerate %%FPS%% -start_number %%START%% -i %%INPUT%% '
                 . $encode_opts . ' -vf %%SCALE%%';
             $params = [
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
@@ -3259,7 +3266,7 @@ function image_sequence_generate_proxy(int $ref): bool
             fwrite($fh, "file '{$last}'\n");
             fclose($fh);
 
-            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -f concat -safe 0 -r %%FPS%% -i %%LIST%% '
+            $cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate -f concat -safe 0 -r %%FPS%% -i %%LIST%% '
                 . $encode_opts . ' -vf %%SCALE%%';
             $params = [
                 '%%FPS%%' => new CommandPlaceholderArg((string) $fps, [CommandPlaceholderArg::class, 'alwaysValid']),
@@ -3284,9 +3291,10 @@ function image_sequence_generate_proxy(int $ref): bool
         $poster_source = $paths[$rep_index];
         $poster_jpg = get_resource_path($ref, true, 'pre', true, 'jpg');
         try {
-            $poster_cmd = $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2'
+            // Always disable FFmpeg EXIF autorotate; apply our orientation vf when needed.
+            $poster_cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate -i %%SRC%% -frames:v 1 -q:v 2'
                 . ($orient_vf !== '' ? ' -vf %%ORIENT%%' : '')
-                . ' %%DST%%';
+                . ' -update 1 %%DST%%';
             $poster_params = [
                 '%%SRC%%' => new CommandPlaceholderArg($poster_source, 'image_sequence_is_valid_shell_path'),
                 '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
@@ -3391,7 +3399,7 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
     $ffmpeg = get_utility_path('ffmpeg');
     $convert = get_utility_path('im-convert');
     $jpeg_q = image_sequence_im_jpeg_quality_arg(80);
-    // FFmpeg branch does not honour EXIF orientation; rotate inverted stills upright.
+    // Disable FFmpeg EXIF autorotate, then rotate inverted stills upright ourselves.
     // (The ImageMagick fallback below already uses -auto-orient.)
     $orient_vf = image_sequence_orientation_vf($ref);
     $snap_vf = ($orient_vf !== '' ? $orient_vf . ',' : '') . 'scale=640:-2';
@@ -3408,7 +3416,7 @@ function image_sequence_write_snapshots_from_stills(int $ref, array $paths, int 
         if ($ffmpeg !== false) {
             try {
                 run_command(
-                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -vf %%VF%% -q:v 3 -update 1 %%DST%%',
+                    $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate -i %%SRC%% -frames:v 1 -vf %%VF%% -q:v 3 -update 1 %%DST%%',
                     false,
                     [
                         '%%SRC%%' => new CommandPlaceholderArg($src, 'image_sequence_is_valid_shell_path'),
@@ -3816,14 +3824,21 @@ function image_sequence_refresh_poster_from_still(int $ref, string $frame_path, 
         $ffmpeg = get_utility_path('ffmpeg');
         if ($ffmpeg !== false) {
             try {
-                run_command(
-                    $ffmpeg . ' -hide_banner -loglevel error -y -i %%SRC%% -frames:v 1 -q:v 2 -update 1 %%DST%%',
-                    false,
-                    [
-                        '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
-                        '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
-                    ]
-                );
+                $orient_vf = image_sequence_orientation_vf($ref);
+                $poster_cmd = $ffmpeg . ' -hide_banner -loglevel error -y -noautorotate -i %%SRC%% -frames:v 1 -q:v 2'
+                    . ($orient_vf !== '' ? ' -vf %%ORIENT%%' : '')
+                    . ' -update 1 %%DST%%';
+                $poster_params = [
+                    '%%SRC%%' => new CommandPlaceholderArg($frame_path, 'image_sequence_is_valid_shell_path'),
+                    '%%DST%%' => new CommandPlaceholderArg($poster_jpg, 'is_valid_rs_path'),
+                ];
+                if ($orient_vf !== '') {
+                    $poster_params['%%ORIENT%%'] = new CommandPlaceholderArg(
+                        $orient_vf,
+                        [CommandPlaceholderArg::class, 'alwaysValid']
+                    );
+                }
+                run_command($poster_cmd, false, $poster_params);
                 $wrote = is_file($poster_jpg) && filesize($poster_jpg) > 0;
             } catch (Throwable $e) {
                 debug('image_sequence_refresh_poster_from_still ffmpeg: ' . $e->getMessage());
