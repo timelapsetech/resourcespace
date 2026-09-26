@@ -168,64 +168,63 @@ function image_sequence_framing_tier(int $box_width, int $aspect_w, int $aspect_
  *
  * @return array{width: int, height: int}
  */
-function image_sequence_source_dimensions(array $resource): array
+/**
+ * Read width/height from resource_dimensions if present.
+ *
+ * @return array{width: int, height: int}
+ */
+function image_sequence_resource_dimensions_row(int $ref): array
 {
-    $ref = (int) ($resource['ref'] ?? 0);
     if ($ref <= 0) {
         return ['width' => 0, 'height' => 0];
     }
+    $dims = ps_query(
+        'SELECT width, height FROM resource_dimensions WHERE resource = ? LIMIT 1',
+        ['i', $ref]
+    );
+    return [
+        'width' => (int) ($dims[0]['width'] ?? 0),
+        'height' => (int) ($dims[0]['height'] ?? 0),
+    ];
+}
 
-    if (image_sequence_is_sequence_resource($resource)) {
-        $dims = ps_query(
-            'SELECT width, height FROM resource_dimensions WHERE resource = ? LIMIT 1',
-            ['i', $ref]
-        );
-        $width = (int) ($dims[0]['width'] ?? 0);
-        $height = (int) ($dims[0]['height'] ?? 0);
-        if ($width > 0 && $height > 0) {
-            return ['width' => $width, 'height' => $height];
-        }
-
-        $data = image_sequence_get_data($ref);
-        if ($data !== null) {
-            $path = image_sequence_member_path_at($data, 0);
-            if ($path !== null && is_file($path)) {
-                $info = @getimagesize($path);
-                if (is_array($info) && (int) ($info[0] ?? 0) > 0 && (int) ($info[1] ?? 0) > 0) {
-                    return ['width' => (int) $info[0], 'height' => (int) $info[1]];
-                }
-            }
-        }
-
-        return ['width' => 0, 'height' => 0];
-    }
-
-    if (!image_sequence_is_video_resource($resource)) {
-        return ['width' => 0, 'height' => 0];
-    }
-
-    $path = image_sequence_video_source_path($resource);
-    if ($path === '' || !is_file($path)) {
-        $path = image_sequence_video_playback_path($resource);
-    }
+/**
+ * Probe a video/still path for display width/height (respecting rotation).
+ *
+ * @return array{width: int, height: int}
+ */
+function image_sequence_probe_media_dimensions(string $path): array
+{
     if ($path === '' || !is_file($path)) {
         return ['width' => 0, 'height' => 0];
+    }
+
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'gif', 'webp', 'bmp'], true)) {
+        $info = @getimagesize($path);
+        if (is_array($info) && (int) ($info[0] ?? 0) > 0 && (int) ($info[1] ?? 0) > 0) {
+            return ['width' => (int) $info[0], 'height' => (int) $info[1]];
+        }
     }
 
     try {
         $info = get_video_info($path);
     } catch (Throwable $e) {
-        debug('image_sequence_source_dimensions: ' . $e->getMessage());
-
-        return ['width' => 0, 'height' => 0];
+        debug('image_sequence_probe_media_dimensions: ' . $e->getMessage());
+        $info = null;
     }
-
     if (!is_array($info) || empty($info['streams']) || !is_array($info['streams'])) {
+        // Last resort for stills ffprobe couldn't read.
+        $info2 = @getimagesize($path);
+        if (is_array($info2) && (int) ($info2[0] ?? 0) > 0) {
+            return ['width' => (int) $info2[0], 'height' => (int) $info2[1]];
+        }
+
         return ['width' => 0, 'height' => 0];
     }
 
     foreach ($info['streams'] as $stream) {
-        if (($stream['codec_type'] ?? '') !== 'video') {
+        if (($stream['codec_type'] ?? '') !== 'video' && ($stream['codec_type'] ?? '') !== '') {
             continue;
         }
         $width = (int) ($stream['width'] ?? 0);
@@ -233,7 +232,6 @@ function image_sequence_source_dimensions(array $resource): array
         if ($width <= 0 || $height <= 0) {
             continue;
         }
-
         $rotation = image_sequence_video_stream_rotation($stream);
         if ($rotation === 90 || $rotation === 270 || $rotation === -90 || $rotation === -270) {
             return ['width' => $height, 'height' => $width];
@@ -243,6 +241,112 @@ function image_sequence_source_dimensions(array $resource): array
     }
 
     return ['width' => 0, 'height' => 0];
+}
+
+function image_sequence_source_dimensions(array $resource): array
+{
+    global $ffmpeg_preview_extension;
+
+    $ref = (int) ($resource['ref'] ?? 0);
+    if ($ref <= 0) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    // Prefer catalogued dimensions when they look real.
+    $row = image_sequence_resource_dimensions_row($ref);
+    if ($row['width'] > 0 && $row['height'] > 0) {
+        return $row;
+    }
+
+    if (image_sequence_is_sequence_resource($resource)) {
+        $data = image_sequence_get_data($ref);
+        if ($data !== null) {
+            // Prefer representative / mid frame over first (first can be black/slate).
+            $rep = (int) ($data['representative_frame'] ?? 0);
+            foreach ([$rep, 0, (int) floor(((int) ($data['frame_count'] ?? 1)) / 2)] as $idx) {
+                $path = image_sequence_member_path_at($data, max(0, $idx));
+                if ($path === null) {
+                    continue;
+                }
+                $probed = image_sequence_probe_media_dimensions($path);
+                if ($probed['width'] > 0 && $probed['height'] > 0) {
+                    return $probed;
+                }
+            }
+        }
+
+        // Full-res representative still / poster in filestore (often unscaled).
+        $still = image_sequence_get_representative_still_path($ref);
+        if ($still !== '') {
+            $probed = image_sequence_probe_media_dimensions($still);
+            if ($probed['width'] > 0 && $probed['height'] > 0) {
+                return $probed;
+            }
+        }
+        $poster = get_resource_path($ref, true, 'pre', false, 'jpg');
+        if (is_string($poster) && is_file($poster)) {
+            $probed = image_sequence_probe_media_dimensions($poster);
+            if ($probed['width'] > 0 && $probed['height'] > 0) {
+                return $probed;
+            }
+        }
+
+        // Last resort: proxy video intrinsic size (UI can still frame; render scales up).
+        $ext = $ffmpeg_preview_extension ?: 'mp4';
+        $proxy = get_resource_path($ref, true, 'pre', false, $ext);
+        if (is_string($proxy) && is_file($proxy)) {
+            return image_sequence_probe_media_dimensions($proxy);
+        }
+
+        return ['width' => 0, 'height' => 0];
+    }
+
+    if (!image_sequence_is_video_resource($resource)) {
+        return ['width' => 0, 'height' => 0];
+    }
+
+    foreach (
+        [
+            image_sequence_video_source_path($resource),
+            image_sequence_video_playback_path($resource),
+        ] as $path
+    ) {
+        $probed = image_sequence_probe_media_dimensions($path);
+        if ($probed['width'] > 0 && $probed['height'] > 0) {
+            return $probed;
+        }
+    }
+
+    return ['width' => 0, 'height' => 0];
+}
+
+/**
+ * Scale a box from one source size to another (e.g. proxy → full-res).
+ *
+ * @param array{x: int, y: int, width: int, height: int, aspect_w: int, aspect_h: int} $box
+ * @return array{x: int, y: int, width: int, height: int, aspect_w: int, aspect_h: int, source_width: int, source_height: int}
+ */
+function image_sequence_framing_scale_box_to_source(array $box, int $from_w, int $from_h, int $to_w, int $to_h): array
+{
+    if ($from_w <= 0 || $from_h <= 0 || $to_w <= 0 || $to_h <= 0) {
+        return image_sequence_framing_normalize_box($box, max(2, $to_w), max(2, $to_h));
+    }
+    if ($from_w === $to_w && $from_h === $to_h) {
+        return image_sequence_framing_normalize_box($box, $to_w, $to_h);
+    }
+
+    $sx = $to_w / $from_w;
+    $sy = $to_h / $from_h;
+    $scaled = [
+        'aspect_w' => (int) ($box['aspect_w'] ?? 16),
+        'aspect_h' => (int) ($box['aspect_h'] ?? 9),
+        'x' => (int) round(((int) ($box['x'] ?? 0)) * $sx),
+        'y' => (int) round(((int) ($box['y'] ?? 0)) * $sy),
+        'width' => (int) round(((int) ($box['width'] ?? 0)) * $sx),
+        'height' => (int) round(((int) ($box['height'] ?? 0)) * $sy),
+    ];
+
+    return image_sequence_framing_normalize_box($scaled, $to_w, $to_h);
 }
 
 /**
@@ -448,14 +552,24 @@ function image_sequence_framing_save_box(int $resource, array $input): array
     }
 
     $dims = image_sequence_source_dimensions($resource_data);
-    if ($dims['width'] <= 0 || $dims['height'] <= 0) {
+    $client_sw = (int) ($input['source_width'] ?? 0);
+    $client_sh = (int) ($input['source_height'] ?? 0);
+
+    // Prefer real source dims; fall back to client-reported (proxy) size so UI still works.
+    $target_w = $dims['width'] > 0 ? $dims['width'] : $client_sw;
+    $target_h = $dims['height'] > 0 ? $dims['height'] : $client_sh;
+    if ($target_w <= 0 || $target_h <= 0) {
         return [
             'ok' => false,
             'message' => $lang['image_sequence_framing_no_dims'] ?? 'Could not determine source dimensions.',
         ];
     }
 
-    $normalized = image_sequence_framing_normalize_box($input, $dims['width'], $dims['height']);
+    if ($client_sw > 0 && $client_sh > 0 && ($client_sw !== $target_w || $client_sh !== $target_h)) {
+        $normalized = image_sequence_framing_scale_box_to_source($input, $client_sw, $client_sh, $target_w, $target_h);
+    } else {
+        $normalized = image_sequence_framing_normalize_box($input, $target_w, $target_h);
+    }
     $label = trim((string) ($input['label'] ?? ''));
     if ($label === '') {
         $label = image_sequence_framing_aspect_label_for($normalized['aspect_w'], $normalized['aspect_h']);
@@ -835,6 +949,42 @@ function image_sequence_render_framing_box(int $box_ref): bool
     $h = (int) $box['height'];
     $aspect_w = (int) $box['aspect_w'];
     $aspect_h = (int) $box['aspect_h'];
+    $stored_sw = (int) ($box['source_width'] ?? 0);
+    $stored_sh = (int) ($box['source_height'] ?? 0);
+
+    // Scale stored coords up if they were captured against a proxy-sized frame.
+    $actual = image_sequence_source_dimensions($resource_data);
+    if (
+        $actual['width'] > 0
+        && $actual['height'] > 0
+        && $stored_sw > 0
+        && $stored_sh > 0
+        && ($stored_sw !== $actual['width'] || $stored_sh !== $actual['height'])
+    ) {
+        $scaled = image_sequence_framing_scale_box_to_source(
+            [
+                'aspect_w' => $aspect_w,
+                'aspect_h' => $aspect_h,
+                'x' => $x,
+                'y' => $y,
+                'width' => $w,
+                'height' => $h,
+            ],
+            $stored_sw,
+            $stored_sh,
+            $actual['width'],
+            $actual['height']
+        );
+        $x = $scaled['x'];
+        $y = $scaled['y'];
+        $w = $scaled['width'];
+        $h = $scaled['height'];
+        $box['x'] = $x;
+        $box['y'] = $y;
+        $box['width'] = $w;
+        $box['height'] = $h;
+    }
+
     if ($w < 2 || $h < 2) {
         image_sequence_framing_set_render_status($box_ref, 'failed', 'Invalid box size.');
 

@@ -186,7 +186,23 @@ function makeLocalId() {
 }
 
 function addCenteredBox(state) {
-    if (!state.canEdit || state.sourceWidth <= 0) {
+    if (state.sourceWidth <= 0 || state.sourceHeight <= 0) {
+        tryAdoptVideoDimensions(state);
+    }
+    if (!state.canEdit) {
+        setStatus(
+            (state.lang && state.lang.framingNoDims)
+                || 'Source dimensions unknown — framing disabled.',
+            true
+        );
+        return;
+    }
+    if (state.sourceWidth <= 0 || state.sourceHeight <= 0) {
+        setStatus(
+            (state.lang && state.lang.framingNoDims)
+                || 'Source dimensions unknown — framing disabled.',
+            true
+        );
         return;
     }
     const aspect = selectedAspect(state);
@@ -219,6 +235,37 @@ function addCenteredBox(state) {
     state.boxes.push(box);
     state.selectedId = box.ref || box.localId;
     renderAll(state);
+    setStatus('Framing box added — drag to adjust, then Save.');
+}
+
+/**
+ * Adopt the playing video's intrinsic size when PHP couldn't resolve source dims.
+ * @returns {boolean}
+ */
+function tryAdoptVideoDimensions(state) {
+    if (!state || state.sourceWidth > 0) {
+        return state && state.sourceWidth > 0;
+    }
+    const host = document.getElementById(state.playerElementId);
+    const video = host ? host.querySelector('video') : null;
+    if (!video || !(video.videoWidth > 0) || !(video.videoHeight > 0)) {
+        return false;
+    }
+    state.sourceWidth = video.videoWidth;
+    state.sourceHeight = video.videoHeight;
+    const dimsEl = document.getElementById('image_sequence_framing_source_dims');
+    if (dimsEl) {
+        dimsEl.textContent = state.sourceWidth + ' × ' + state.sourceHeight;
+    }
+    if (state._wantEdit) {
+        state.canEdit = true;
+        const overlay = document.getElementById('image_sequence_framing_overlay');
+        if (overlay) {
+            overlay.classList.remove('is-readonly');
+        }
+        wireOverlayInteractions(state);
+    }
+    return true;
 }
 
 function findBox(state, id) {
@@ -442,7 +489,7 @@ function pointerToSource(state, clientX, clientY) {
 
 function wireOverlayInteractions(state) {
     const overlay = document.getElementById('image_sequence_framing_overlay');
-    if (!overlay || !state.canEdit) {
+    if (!overlay) {
         return;
     }
 
@@ -462,19 +509,12 @@ function wireOverlayInteractions(state) {
         if (drag.mode === 'draw') {
             const aspect = drag.aspect;
             let w = Math.abs(pt.x - drag.originX);
-            let h = Math.round((w * aspect.h) / aspect.w);
-            if (pt.y < drag.originY) {
-                // Growing upward — still use width-driven aspect.
-            }
-            // Flip origin based on drag direction.
-            let x = pt.x < drag.originX ? drag.originX - w : drag.originX;
-            let y = pt.y < drag.originY ? drag.originY - h : drag.originY;
             // Clamp so box stays inside frame while keeping aspect.
             const maxFit = fitAspect(aspect.w, aspect.h, state.sourceWidth, state.sourceHeight);
             w = Math.min(w, maxFit.width);
-            h = Math.round((w * aspect.h) / aspect.w);
-            x = pt.x < drag.originX ? drag.originX - w : drag.originX;
-            y = pt.y < drag.originY ? drag.originY - h : drag.originY;
+            let h = Math.round((w * aspect.h) / aspect.w);
+            let x = pt.x < drag.originX ? drag.originX - w : drag.originX;
+            let y = pt.y < drag.originY ? drag.originY - h : drag.originY;
             x = clamp(x, 0, state.sourceWidth - w);
             y = clamp(y, 0, state.sourceHeight - h);
             Object.assign(box, normalizeBox({
@@ -507,26 +547,9 @@ function wireOverlayInteractions(state) {
         if (drag.mode === 'resize') {
             const aspect = {w: box.aspect_w, h: box.aspect_h};
             const handle = drag.handle;
-            let x1 = drag.startX;
-            let y1 = drag.startY;
-            let x2 = drag.startX + drag.startW;
-            let y2 = drag.startY + drag.startH;
-
-            if (handle.indexOf('w') >= 0) {
-                x1 = pt.x;
-            }
-            if (handle.indexOf('e') >= 0) {
-                x2 = pt.x;
-            }
-            if (handle.indexOf('n') >= 0) {
-                y1 = pt.y;
-            }
-            if (handle.indexOf('s') >= 0) {
-                y2 = pt.y;
-            }
-
-            let width = Math.abs(x2 - x1);
-            // Drive by width; re-anchor the opposite corner.
+            let width = handle.indexOf('w') >= 0
+                ? Math.abs((drag.startX + drag.startW) - pt.x)
+                : Math.abs(pt.x - drag.startX);
             const maxFit = fitAspect(aspect.w, aspect.h, state.sourceWidth, state.sourceHeight);
             width = clamp(width, 2, maxFit.width);
             let height = Math.round((width * aspect.h) / aspect.w);
@@ -574,7 +597,18 @@ function wireOverlayInteractions(state) {
     jQuery(document)
         .off('mousedown.imgseqFraming', '#image_sequence_framing_overlay')
         .on('mousedown.imgseqFraming', '#image_sequence_framing_overlay', function (e) {
+            if (state.sourceWidth <= 0) {
+                tryAdoptVideoDimensions(state);
+            }
             if (!state.canEdit || !state.visible || e.button !== 0) {
+                return;
+            }
+            if (state.sourceWidth <= 0 || state.sourceHeight <= 0) {
+                setStatus(
+                    (state.lang && state.lang.framingNoDims)
+                        || 'Source dimensions unknown — framing disabled.',
+                    true
+                );
                 return;
             }
             // Don't start when clicking list inputs etc.
@@ -685,6 +719,8 @@ function saveBox(state, box) {
         y: box.y,
         width: box.width,
         height: box.height,
+        source_width: state.sourceWidth,
+        source_height: state.sourceHeight,
     }, state.csrfFraming)
         .done((data) => {
             if (data && data.ok && data.box) {
@@ -885,19 +921,25 @@ export function initFramingBoxes(config) {
 
     const sourceWidth = Number(config.sourceWidth) || 0;
     const sourceHeight = Number(config.sourceHeight) || 0;
+    const wantEdit = !!config.canEdit;
 
     const state = {
         playerElementId: config.playerElementId,
         framingUrl: config.framingUrl,
         csrfFraming: config.csrfFraming || {},
-        canEdit: !!config.canEdit,
+        canEdit: wantEdit && sourceWidth > 0 && sourceHeight > 0,
+        _wantEdit: wantEdit,
         sourceWidth,
         sourceHeight,
         aspects: config.aspects || [],
         defaultAspect: config.defaultAspect || '16:9',
         lang: config.lang || {},
         boxes: cloneBoxes(config.framingBoxes || []).map((b) =>
-            normalizeBox(Object.assign({}, b, {dirty: false}), sourceWidth || b.source_width || 1, sourceHeight || b.source_height || 1)
+            normalizeBox(
+                Object.assign({}, b, {dirty: false}),
+                sourceWidth || b.source_width || 1,
+                sourceHeight || b.source_height || 1
+            )
         ),
         selectedId: null,
         visible: true,
@@ -908,18 +950,6 @@ export function initFramingBoxes(config) {
 
     if (state.boxes.length > 0) {
         state.selectedId = state.boxes[0].ref || state.boxes[0].localId;
-    }
-
-    if (sourceWidth <= 0 || sourceHeight <= 0) {
-        const dimsEl = document.getElementById('image_sequence_framing_source_dims');
-        if (dimsEl) {
-            dimsEl.textContent = '';
-        }
-        if (config.canEdit) {
-            setStatus(config.lang.framingNoDims || 'Source dimensions unknown — framing disabled.', true);
-        }
-        // Still show saved boxes read-only if any, but disable editing.
-        state.canEdit = false;
     }
 
     framingState = state;
@@ -942,8 +972,34 @@ export function initFramingBoxes(config) {
         panel.hidden = false;
     }
 
-    // Wait a tick so the video element exists inside Omakase chroming.
-    setTimeout(() => renderAll(state), 100);
+    function finishInit() {
+        tryAdoptVideoDimensions(state);
+        const dimsEl = document.getElementById('image_sequence_framing_source_dims');
+        if (dimsEl && state.sourceWidth > 0) {
+            dimsEl.textContent = state.sourceWidth + ' × ' + state.sourceHeight;
+        }
+        if (wantEdit && state.sourceWidth <= 0) {
+            setStatus(
+                (config.lang && config.lang.framingNoDims)
+                    || 'Source dimensions unknown — framing disabled.',
+                true
+            );
+        }
+        renderAll(state);
+    }
+
+    // Wait for Omakase chroming + video metadata so we can adopt proxy dims if needed.
+    let tries = 0;
+    const boot = setInterval(() => {
+        tries++;
+        const host = document.getElementById(state.playerElementId);
+        const video = host ? host.querySelector('video') : null;
+        if ((video && video.videoWidth > 0) || tries > 40) {
+            clearInterval(boot);
+            finishInit();
+        }
+    }, 150);
+
     startPolling(state);
 }
 

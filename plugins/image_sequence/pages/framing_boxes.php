@@ -70,6 +70,8 @@ try {
                 'y' => getval('y', 0, true),
                 'width' => getval('width', 0, true),
                 'height' => getval('height', 0, true),
+                'source_width' => getval('source_width', 0, true),
+                'source_height' => getval('source_height', 0, true),
             ];
             $result = image_sequence_framing_save_box($ref, $input);
             break;

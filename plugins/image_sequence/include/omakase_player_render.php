@@ -288,19 +288,21 @@ function image_sequence_render_omakase_player(array $opts): void
 
                     <span class="image_sequence_nle_sep" aria-hidden="true"></span>
                     <div class="image_sequence_nle_group nle-group-framing" role="group" aria-label="<?php echo escape($lang['image_sequence_framing'] ?? 'Framing'); ?>">
-                        <label class="nle-framing-aspect-label" for="image_sequence_framing_aspect">
-                            <span class="nle-sr-only"><?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?></span>
-                            <select id="image_sequence_framing_aspect" class="nle-framing-aspect" title="<?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?>">
-                                <?php foreach ($aspect_presets as $label => $pair) { ?>
-                                    <option
-                                        value="<?php echo escape((string) $label); ?>"
-                                        data-w="<?php echo (int) $pair[0]; ?>"
-                                        data-h="<?php echo (int) $pair[1]; ?>"
-                                        <?php echo ((string) $label === $default_aspect) ? 'selected' : ''; ?>
-                                    ><?php echo escape((string) $label); ?></option>
-                                <?php } ?>
-                            </select>
-                        </label>
+                        <select
+                            id="image_sequence_framing_aspect"
+                            class="nle-framing-aspect"
+                            aria-label="<?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?>"
+                            title="<?php echo escape($lang['image_sequence_framing_aspect'] ?? 'Aspect ratio'); ?>"
+                        >
+                            <?php foreach ($aspect_presets as $label => $pair) { ?>
+                                <option
+                                    value="<?php echo escape((string) $label); ?>"
+                                    data-w="<?php echo (int) $pair[0]; ?>"
+                                    data-h="<?php echo (int) $pair[1]; ?>"
+                                    <?php echo ((string) $label === $default_aspect) ? 'selected' : ''; ?>
+                                ><?php echo escape((string) $label); ?></option>
+                            <?php } ?>
+                        </select>
                         <button type="button" class="image_sequence_nle_btn nle-framing-add" id="image_sequence_framing_add" title="<?php echo escape($lang['image_sequence_framing_add'] ?? 'Add framing box'); ?>">
                             <?php echo $ico('add'); ?>
                             <span><?php echo escape($lang['image_sequence_framing_add_short'] ?? 'Box'); ?></span>
