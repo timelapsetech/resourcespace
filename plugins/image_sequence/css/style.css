@@ -26,11 +26,18 @@
     flex: 0 1 460px;
     width: auto;
     min-width: 360px;
+    max-width: 100%;
     margin: 0 0 15px 0;
+    overflow: visible;
+    box-sizing: border-box;
 }
 
-.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload .RecordTools {
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload .RecordTools,
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) > .RecordDownload .RecordDownloadSpace {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
 }
 
 /* Metadata (and any other) panels drop to a full-width row below the player. */
@@ -48,31 +55,108 @@
  */
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions,
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tbody {
-    display: block;
-    width: 100%;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptionsHeader {
-    display: none;
+    display: none !important;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tr.DownloadDBlend {
-    display: block;
-    width: 100%;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #e0e0e0;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    padding: 0.85rem 0 !important;
+    margin: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    overflow: visible;
+    background: transparent !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tr.DownloadDBlend:last-child {
+    border-bottom: none !important;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions tr.DownloadDBlend > td {
-    display: block;
+    display: block !important;
     width: 100% !important;
-    padding: 0;
-    text-align: left;
-    border-top: none;
+    max-width: 100% !important;
+    box-sizing: border-box;
+    padding: 0 !important;
+    text-align: left !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    vertical-align: top !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadFileName {
+    overflow: hidden;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadFileName h2 {
-    margin-bottom: 2px;
+    margin: 0 0 2px !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+    text-align: left !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadFileName p {
+    margin: 2px 0 0 !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    text-align: left !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadFileName.AlternativeFile {
+    display: flex !important;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AlternativeFileImage,
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AlternativeFileText {
+    float: none !important;
+    max-width: none !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AlternativeFileImage {
+    flex: 0 0 auto;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AlternativeFileImage a,
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AltThumbLink {
+    display: block !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    line-height: 0 !important;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AltThumb {
+    display: block;
+    width: 72px;
+    height: 54px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #0f1013;
+}
+
+.RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions .AlternativeFileText {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.Picker select {
@@ -80,16 +164,26 @@
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadButton {
-    margin-top: 0.4rem;
-    text-align: left;
+    margin-top: 0.55rem !important;
+    text-align: left !important;
     font-weight: normal;
+    white-space: normal !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
 }
 
 .RecordResource:has(#previewimagewrapper.image_sequence_omakase_wrap) #ResourceDownloadOptions td.DownloadButton a {
-    display: inline-block;
-    width: auto;
-    min-width: 130px;
-    margin: 0 0.4rem 0 0;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: auto !important;
+    max-width: calc(100% - 4px) !important;
+    min-width: 0 !important;
+    margin: 0 0.4rem 0.35rem 0 !important;
+    padding: 0.45rem 0.9rem !important;
+    white-space: nowrap;
 }
 
 .image_sequence_omakase_player {

@@ -158,7 +158,7 @@ button,
 input[type="submit"],
 input[type="button"],
 .UploadButton a,
-.RecordPanel .RecordDownloadSpace .DownloadDBlend a {
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton a {
     border-radius: 999px !important;
 }
 
@@ -170,11 +170,35 @@ input[type="button"],
 button.Primary,
 input.Primary,
 a.Primary,
-.RecordPanel .RecordDownloadSpace .DownloadDBlend a {
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton a {
     background: linear-gradient(135deg, var(--chroma-magenta), var(--chroma-blue)) !important;
     color: var(--chroma-fg) !important;
     border: none !important;
     box-shadow: var(--chroma-glow);
+}
+
+/* Alternative-file thumbs / preview links must not inherit Download pill chrome */
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadFileName a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AlternativeFile a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AltThumbLink,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AlternativeFileImage a,
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadFileName a,
+.RecordPanel .RecordDownload .DownloadDBlend .AlternativeFile a,
+.RecordPanel .RecordDownload .DownloadDBlend .AltThumbLink,
+.RecordPanel .RecordDownload .DownloadDBlend .AlternativeFileImage a {
+    background: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    display: inline-block !important;
+    line-height: 0 !important;
+    color: inherit !important;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1087,6 +1111,7 @@ a.Primary,
     font-weight: 500 !important;
     line-height: 1.35;
     display: block;
+    font-family: var(--chroma-font-sans) !important;
 }
 
 .RecordPanel .RecordDownload .DownloadDBlend p,
@@ -1105,10 +1130,23 @@ a.Primary,
     text-align: right !important;
     white-space: nowrap;
     width: 1%;
+    overflow: visible;
+    padding-right: 8px !important;
+}
+
+/* Alternative files: give the action column room so Download pills aren't clipped */
+.RecordPanel .RecordDownload .DownloadDBlend td.DownloadFileName.AlternativeFile {
+    width: auto !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend:has(td.AlternativeFile) td.DownloadButton {
+    width: auto !important;
+    min-width: 7.5rem;
+    padding-left: 12px !important;
+    padding-right: 10px !important;
 }
 
 .RecordPanel .RecordDownload .DownloadDBlend .DownloadButton a,
-.RecordPanel .RecordDownloadSpace .DownloadDBlend a,
 .RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadButton a {
     display: inline-flex !important;
     align-items: center;
@@ -1125,6 +1163,36 @@ a.Primary,
     box-shadow: none !important;
     line-height: 1.2;
     border: none !important;
+}
+
+/* Keep alternative-file preview thumbs plain even under the DownloadDBlend rules above */
+.RecordPanel .RecordDownload .DownloadDBlend .DownloadFileName a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .DownloadFileName a,
+.RecordPanel .RecordDownload .DownloadDBlend .AlternativeFileImage a,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AlternativeFileImage a,
+.RecordPanel .RecordDownload .DownloadDBlend .AltThumbLink,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AltThumbLink {
+    display: inline-block !important;
+    background: transparent !important;
+    background-image: none !important;
+    color: inherit !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    min-width: 0 !important;
+    line-height: 0 !important;
+}
+
+.RecordPanel .RecordDownload .DownloadDBlend .AltThumb,
+.RecordPanel .RecordDownloadSpace .DownloadDBlend .AltThumb {
+    display: block;
+    max-width: 72px;
+    max-height: 54px;
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    object-fit: cover;
 }
 
 /* Nested RecordTools box — flatten into the tab panel */
