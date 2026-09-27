@@ -594,11 +594,11 @@ function renderList(state) {
 
         const meta = document.createElement('span');
         meta.className = 'image_sequence_framing_meta';
+        const rot = normaliseRotation(box.rotation);
         meta.textContent = (box.aspect_label || (box.aspect_w + ':' + box.aspect_h))
+            + ' · x=' + box.x + ' y=' + box.y
             + ' · ' + box.width + '×' + box.height + ' px'
-            + (Math.abs(normaliseRotation(box.rotation)) >= 0.1
-                ? ' · ' + normaliseRotation(box.rotation) + '°'
-                : '')
+            + ' · ' + rot + '°'
             + (box.dirty ? ' · ' + (lang.framingUnsaved || 'Unsaved') : '');
         head.appendChild(meta);
 
@@ -1222,6 +1222,56 @@ function wireToolbar(state) {
                 panel.hidden = !state.visible;
             }
             renderAll(state);
+        });
+
+    jQuery(document)
+        .off('click.imgseqFraming', '#image_sequence_framing_copy_json')
+        .on('click.imgseqFraming', '#image_sequence_framing_copy_json', function (e) {
+            e.preventDefault();
+            copyFramingJson(state);
+        });
+}
+
+function copyFramingJson(state) {
+    getJson(state.framingUrl, {action: 'export', ajax: 'true'})
+        .done((data) => {
+            if (!data || !data.ok) {
+                setStatus(
+                    (data && data.message)
+                        || (state.lang.framingCopyJsonFailed || 'Could not copy framing JSON.'),
+                    true
+                );
+                return;
+            }
+            const text = JSON.stringify(data, null, 2);
+            const done = () => setStatus(
+                state.lang.framingCopyJsonDone || 'Framing JSON copied to clipboard.'
+            );
+            const fail = () => setStatus(
+                state.lang.framingCopyJsonFailed || 'Could not copy framing JSON.',
+                true
+            );
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(fail);
+                return;
+            }
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                done();
+            } catch (err) {
+                fail();
+            }
+        })
+        .fail(() => {
+            setStatus(state.lang.framingCopyJsonFailed || 'Could not copy framing JSON.', true);
         });
 }
 

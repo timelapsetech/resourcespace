@@ -153,6 +153,10 @@ function image_sequence_render_omakase_player(array $opts): void
             'framingRotationTitle' => $lang['image_sequence_framing_rotation_title'] ?? 'Rotate image under this box (clockwise degrees)',
             'framingSize' => $lang['image_sequence_framing_size'] ?? 'Size',
             'framingSizeTitle' => $lang['image_sequence_framing_size_title'] ?? 'Output frame size for the rendered MP4',
+            'framingCopyJson' => $lang['image_sequence_framing_copy_json'] ?? 'Copy JSON',
+            'framingCopyJsonTitle' => $lang['image_sequence_framing_copy_json_title'] ?? 'Copy framing boxes JSON for external renderers',
+            'framingCopyJsonDone' => $lang['image_sequence_framing_copy_json_done'] ?? 'Framing JSON copied to clipboard.',
+            'framingCopyJsonFailed' => $lang['image_sequence_framing_copy_json_failed'] ?? 'Could not copy framing JSON.',
         ],
     ];
 
@@ -377,6 +381,12 @@ function image_sequence_render_omakase_player(array $opts): void
                                 >
                             </label>
                         <?php } ?>
+                        <button
+                            type="button"
+                            class="image_sequence_framing_btn"
+                            id="image_sequence_framing_copy_json"
+                            title="<?php echo escape($lang['image_sequence_framing_copy_json_title'] ?? 'Copy framing boxes JSON for external renderers'); ?>"
+                        ><?php echo escape($lang['image_sequence_framing_copy_json'] ?? 'Copy JSON'); ?></button>
                         <span class="image_sequence_framing_source_dims" id="image_sequence_framing_source_dims">
                             <?php
                             if ($source_width > 0 && $source_height > 0) {

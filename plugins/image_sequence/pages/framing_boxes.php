@@ -40,7 +40,7 @@ if (!$is_sequence && !$is_video) {
 
 image_sequence_ensure_framing_table();
 
-// list is readable for anyone who can view the resource; mutating actions need edit.
+// list / export are readable for anyone who can view the resource; mutating actions need edit.
 if ($action === 'list') {
     $dims = image_sequence_source_dimensions($resource);
     $send_json([
@@ -49,6 +49,14 @@ if ($action === 'list') {
         'source_width' => $dims['width'],
         'source_height' => $dims['height'],
     ]);
+}
+
+if ($action === 'export') {
+    $export = image_sequence_framing_export_resource($ref);
+    if ($export === false) {
+        $send_json(['ok' => false, 'message' => $lang['error-permissiondenied'] ?? 'Permission denied'], 403);
+    }
+    $send_json($export);
 }
 
 if (!get_edit_access($ref)) {

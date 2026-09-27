@@ -569,6 +569,9 @@ function image_sequence_framing_serialize_box(array $row): array
         'source_width' => (int) ($row['source_width'] ?? 0),
         'source_height' => (int) ($row['source_height'] ?? 0),
         'rotation' => image_sequence_framing_normalise_rotation((float) ($row['rotation'] ?? 0)),
+        // Explicit aliases for external renderers.
+        'rotation_degrees_clockwise' => image_sequence_framing_normalise_rotation((float) ($row['rotation'] ?? 0)),
+        'coordinate_system' => 'source_pixels',
         'tier' => $tier,
         'target_uhd_width' => (int) $targets['uhd']['width'],
         'target_uhd_height' => (int) $targets['uhd']['height'],
@@ -581,6 +584,77 @@ function image_sequence_framing_serialize_box(array $row): array
         'preview_url' => $preview_url,
         'render_status' => (string) ($row['render_status'] ?? ''),
         'render_message' => (string) ($row['render_message'] ?? ''),
+    ];
+}
+
+/**
+ * Export framing boxes for a resource in a stable shape for UI / remote APIs.
+ *
+ * Coordinates are in true source pixels (top-left origin). Rotation is degrees
+ * clockwise around the box centre; the crop rectangle itself stays axis-aligned.
+ *
+ * @return array<string, mixed>|false
+ */
+function image_sequence_framing_export_resource(int $resource)
+{
+    if ($resource <= 0) {
+        return false;
+    }
+    $resource_data = get_resource_data($resource);
+    if (!is_array($resource_data)) {
+        return false;
+    }
+    $access = get_resource_access($resource_data);
+    if ((int) $access === RESOURCE_ACCESS_CONFIDENTIAL || (int) $access === RESOURCE_ACCESS_INVALID_REQUEST) {
+        return false;
+    }
+    if (
+        !image_sequence_is_sequence_resource($resource_data)
+        && !image_sequence_is_video_resource($resource_data)
+    ) {
+        return false;
+    }
+
+    $dims = image_sequence_source_dimensions($resource_data);
+    $boxes = image_sequence_framing_get_boxes($resource);
+
+    $in_frame = null;
+    $out_frame = null;
+    $fps = null;
+    if (image_sequence_is_sequence_resource($resource_data)) {
+        $seq = image_sequence_get_data($resource);
+        if (is_array($seq)) {
+            $fps = isset($seq['fps']) ? (float) $seq['fps'] : null;
+            $in_frame = isset($seq['in_frame']) && $seq['in_frame'] !== null && $seq['in_frame'] !== ''
+                ? (int) $seq['in_frame']
+                : null;
+            $out_frame = isset($seq['out_frame']) && $seq['out_frame'] !== null && $seq['out_frame'] !== ''
+                ? (int) $seq['out_frame']
+                : null;
+        }
+    } elseif (image_sequence_is_video_resource($resource_data) && function_exists('image_sequence_video_get_marks')) {
+        $marks = image_sequence_video_get_marks($resource);
+        $fps = (float) ($marks['fps'] ?? 0) ?: null;
+        $in_frame = (int) ($marks['in_frame'] ?? 0);
+        $out_frame = (int) ($marks['out_frame'] ?? 0);
+    }
+
+    return [
+        'ok' => true,
+        'resource' => $resource,
+        'schema' => 'image_sequence_framing_v1',
+        'coordinate_system' => 'source_pixels',
+        'origin' => 'top_left',
+        'rotation_convention' => 'degrees_clockwise_around_box_center',
+        'notes' => 'Box x/y/width/height are axis-aligned in source pixels. '
+            . 'Apply rotation clockwise around the box centre, then crop the AABB.',
+        'source_width' => (int) ($dims['width'] ?? 0),
+        'source_height' => (int) ($dims['height'] ?? 0),
+        'fps' => $fps,
+        'in_frame' => $in_frame,
+        'out_frame' => $out_frame,
+        'box_count' => count($boxes),
+        'boxes' => $boxes,
     ];
 }
 
