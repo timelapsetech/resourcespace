@@ -17,37 +17,70 @@ function image_sequence_ensure_framing_table(): void
         [],
         0
     );
-    if ($exists > 0) {
+    if ($exists === 0) {
+        ps_query(
+            "CREATE TABLE resource_framing_box (
+                ref int(11) NOT NULL AUTO_INCREMENT,
+                resource int(11) NOT NULL,
+                label varchar(255) DEFAULT NULL,
+                aspect_w int(11) NOT NULL,
+                aspect_h int(11) NOT NULL,
+                x int(11) NOT NULL DEFAULT 0,
+                y int(11) NOT NULL DEFAULT 0,
+                width int(11) NOT NULL DEFAULT 0,
+                height int(11) NOT NULL DEFAULT 0,
+                source_width int(11) NOT NULL DEFAULT 0,
+                source_height int(11) NOT NULL DEFAULT 0,
+                rotation double DEFAULT 0,
+                alt_file int(11) DEFAULT NULL,
+                render_status varchar(20) DEFAULT NULL,
+                render_message varchar(500) DEFAULT NULL,
+                created_by int(11) DEFAULT NULL,
+                created datetime DEFAULT CURRENT_TIMESTAMP,
+                modified timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (ref),
+                KEY resource (resource)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            [],
+            '',
+            -1,
+            false
+        );
+
         return;
     }
 
-    ps_query(
-        "CREATE TABLE resource_framing_box (
-            ref int(11) NOT NULL AUTO_INCREMENT,
-            resource int(11) NOT NULL,
-            label varchar(255) DEFAULT NULL,
-            aspect_w int(11) NOT NULL,
-            aspect_h int(11) NOT NULL,
-            x int(11) NOT NULL DEFAULT 0,
-            y int(11) NOT NULL DEFAULT 0,
-            width int(11) NOT NULL DEFAULT 0,
-            height int(11) NOT NULL DEFAULT 0,
-            source_width int(11) NOT NULL DEFAULT 0,
-            source_height int(11) NOT NULL DEFAULT 0,
-            alt_file int(11) DEFAULT NULL,
-            render_status varchar(20) DEFAULT NULL,
-            render_message varchar(500) DEFAULT NULL,
-            created_by int(11) DEFAULT NULL,
-            created datetime DEFAULT CURRENT_TIMESTAMP,
-            modified timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (ref),
-            KEY resource (resource)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+    $has_rotation = (int) ps_value(
+        "SELECT COUNT(*) value FROM information_schema.columns
+         WHERE table_schema = DATABASE()
+           AND table_name = 'resource_framing_box'
+           AND column_name = 'rotation'",
         [],
-        '',
-        -1,
-        false
+        0
     );
+    if ($has_rotation === 0) {
+        ps_query(
+            'ALTER TABLE resource_framing_box ADD COLUMN rotation double DEFAULT 0 AFTER source_height',
+            [],
+            '',
+            -1,
+            false
+        );
+    }
+}
+
+/**
+ * Clamp framing rotation degrees (clockwise positive) to ±45 with 0.1 precision.
+ */
+function image_sequence_framing_normalise_rotation(float $rotation): float
+{
+    // Reject NaN / ±INF without relying on is_finite().
+    if ($rotation !== $rotation || abs($rotation) === INF) {
+        return 0.0;
+    }
+    $rotation = max(-45.0, min(45.0, $rotation));
+
+    return round($rotation, 1);
 }
 
 /**
@@ -395,6 +428,7 @@ function image_sequence_framing_scale_box_to_source(array $box, int $from_w, int
         'y' => (int) round(((int) ($box['y'] ?? 0)) * $sy),
         'width' => (int) round(((int) ($box['width'] ?? 0)) * $sx),
         'height' => (int) round(((int) ($box['height'] ?? 0)) * $sy),
+        'rotation' => image_sequence_framing_normalise_rotation((float) ($box['rotation'] ?? 0)),
     ];
 
     return image_sequence_framing_normalize_box($scaled, $to_w, $to_h);
@@ -433,7 +467,12 @@ function image_sequence_video_stream_rotation(array $stream): int
  *   aspect_w?: int, aspect_h?: int,
  *   source_width?: int, source_height?: int
  * } $box
- * @return array{x: int, y: int, width: int, height: int, aspect_w: int, aspect_h: int, source_width: int, source_height: int}
+ * @return array{
+ *   x: int, y: int, width: int, height: int,
+ *   aspect_w: int, aspect_h: int,
+ *   source_width: int, source_height: int,
+ *   rotation: float
+ * }
  */
 function image_sequence_framing_normalize_box(array $box, int $source_width, int $source_height): array
 {
@@ -478,6 +517,7 @@ function image_sequence_framing_normalize_box(array $box, int $source_width, int
         'aspect_h' => $aspect_h,
         'source_width' => $source_width,
         'source_height' => $source_height,
+        'rotation' => image_sequence_framing_normalise_rotation((float) ($box['rotation'] ?? 0)),
     ];
 }
 
@@ -528,6 +568,7 @@ function image_sequence_framing_serialize_box(array $row): array
         'height' => (int) ($row['height'] ?? 0),
         'source_width' => (int) ($row['source_width'] ?? 0),
         'source_height' => (int) ($row['source_height'] ?? 0),
+        'rotation' => image_sequence_framing_normalise_rotation((float) ($row['rotation'] ?? 0)),
         'tier' => $tier,
         'target_uhd_width' => (int) $targets['uhd']['width'],
         'target_uhd_height' => (int) $targets['uhd']['height'],
@@ -636,6 +677,7 @@ function image_sequence_framing_save_box(int $resource, array $input): array
         $label = image_sequence_framing_aspect_label_for($normalized['aspect_w'], $normalized['aspect_h']);
     }
     $label = mb_substr($label, 0, 255);
+    $rotation = image_sequence_framing_normalise_rotation((float) ($input['rotation'] ?? $normalized['rotation'] ?? 0));
 
     $box_ref = (int) ($input['ref'] ?? 0);
     $created_by = (int) ($userref ?? 0);
@@ -655,7 +697,7 @@ function image_sequence_framing_save_box(int $resource, array $input): array
             'UPDATE resource_framing_box SET
                 label = ?, aspect_w = ?, aspect_h = ?,
                 x = ?, y = ?, width = ?, height = ?,
-                source_width = ?, source_height = ?,
+                source_width = ?, source_height = ?, rotation = ?,
                 modified = NOW()
              WHERE ref = ? AND resource = ?',
             [
@@ -668,6 +710,7 @@ function image_sequence_framing_save_box(int $resource, array $input): array
                 'i', $normalized['height'],
                 'i', $normalized['source_width'],
                 'i', $normalized['source_height'],
+                'd', $rotation,
                 'i', $box_ref,
                 'i', $resource,
             ]
@@ -676,8 +719,8 @@ function image_sequence_framing_save_box(int $resource, array $input): array
         ps_query(
             'INSERT INTO resource_framing_box
                 (resource, label, aspect_w, aspect_h, x, y, width, height,
-                 source_width, source_height, created_by, created, modified)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                 source_width, source_height, rotation, created_by, created, modified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
             [
                 'i', $resource,
                 's', $label,
@@ -689,6 +732,7 @@ function image_sequence_framing_save_box(int $resource, array $input): array
                 'i', $normalized['height'],
                 'i', $normalized['source_width'],
                 'i', $normalized['source_height'],
+                'd', $rotation,
                 'i', $created_by > 0 ? $created_by : 0,
             ]
         );
@@ -1110,6 +1154,7 @@ function image_sequence_render_framing_box(int $box_ref, float $fps = 0.0, strin
 
     // Scale stored coords up if they were captured against a proxy-sized frame.
     $actual = image_sequence_source_dimensions($resource_data);
+    $rotation = image_sequence_framing_normalise_rotation((float) ($box['rotation'] ?? 0));
     if (
         $actual['width'] > 0
         && $actual['height'] > 0
@@ -1125,6 +1170,7 @@ function image_sequence_render_framing_box(int $box_ref, float $fps = 0.0, strin
                 'y' => $y,
                 'width' => $w,
                 'height' => $h,
+                'rotation' => $rotation,
             ],
             $stored_sw,
             $stored_sh,
@@ -1135,10 +1181,20 @@ function image_sequence_render_framing_box(int $box_ref, float $fps = 0.0, strin
         $y = $scaled['y'];
         $w = $scaled['width'];
         $h = $scaled['height'];
+        $rotation = $scaled['rotation'];
         $box['x'] = $x;
         $box['y'] = $y;
         $box['width'] = $w;
         $box['height'] = $h;
+        $box['rotation'] = $rotation;
+        $box['source_width'] = $actual['width'];
+        $box['source_height'] = $actual['height'];
+    } elseif ($actual['width'] > 0 && $actual['height'] > 0) {
+        $box['source_width'] = $actual['width'];
+        $box['source_height'] = $actual['height'];
+        $box['rotation'] = $rotation;
+    } else {
+        $box['rotation'] = $rotation;
     }
 
     if ($w < 2 || $h < 2) {
@@ -1237,7 +1293,10 @@ function image_sequence_framing_set_render_status(int $box_ref, string $status, 
 }
 
 /**
- * Build crop+scale(+orientation) video filter for a framing box.
+ * Build crop+scale(+orientation[+rotation]) video filter for a framing box.
+ *
+ * Rotation is clockwise-positive degrees around the box centre. Preview keeps
+ * the box axis-aligned and rotates the image under it; this filter matches that.
  */
 function image_sequence_framing_vf(array $box, int $target_w, int $target_h, string $orient_vf = ''): string
 {
@@ -1245,13 +1304,57 @@ function image_sequence_framing_vf(array $box, int $target_w, int $target_h, str
     $y = (int) $box['y'];
     $w = (int) $box['width'];
     $h = (int) $box['height'];
-    $crop = "crop={$w}:{$h}:{$x}:{$y}";
+    $sw = max($w, (int) ($box['source_width'] ?? $w));
+    $sh = max($h, (int) ($box['source_height'] ?? $h));
+    $rotation = image_sequence_framing_normalise_rotation((float) ($box['rotation'] ?? 0));
     $scale = "scale={$target_w}:{$target_h}:flags=lanczos,setsar=1";
     $parts = [];
     if ($orient_vf !== '') {
         $parts[] = $orient_vf;
     }
-    $parts[] = $crop;
+
+    if (abs($rotation) < 0.001) {
+        $parts[] = "crop={$w}:{$h}:{$x}:{$y}";
+        $parts[] = $scale;
+
+        return implode(',', $parts);
+    }
+
+    // Patch large enough for the axis-aligned AABB of the rotated box, then
+    // rotate around the patch centre and crop back to w×h.
+    $rad = deg2rad($rotation);
+    $cos = abs(cos($rad));
+    $sin = abs(sin($rad));
+    $pad_w = (int) ceil($w * $cos + $h * $sin);
+    $pad_h = (int) ceil($w * $sin + $h * $cos);
+    $pad_w += ($pad_w % 2);
+    $pad_h += ($pad_h % 2);
+    $pad_w = max($w + 2, $pad_w);
+    $pad_h = max($h + 2, $pad_h);
+
+    $cx = $x + ($w / 2.0);
+    $cy = $y + ($h / 2.0);
+    $sx = (int) floor($cx - ($pad_w / 2.0));
+    $sy = (int) floor($cy - ($pad_h / 2.0));
+    $sx = max(0, min($sx, max(0, $sw - $pad_w)));
+    $sy = max(0, min($sy, max(0, $sh - $pad_h)));
+    // If the padded patch would exceed the frame, shrink to what fits.
+    $pad_w = min($pad_w, $sw - $sx);
+    $pad_h = min($pad_h, $sh - $sy);
+    $pad_w -= ($pad_w % 2);
+    $pad_h -= ($pad_h % 2);
+    $pad_w = max($w, $pad_w);
+    $pad_h = max($h, $pad_h);
+
+    $inner_x = (int) max(0, floor(($pad_w - $w) / 2));
+    $inner_y = (int) max(0, floor(($pad_h - $h) / 2));
+    // FFmpeg rotate uses counter-clockwise for positive angles; UI is clockwise.
+    $ffmpeg_rad = -$rad;
+    $a_expr = sprintf('%.10F', $ffmpeg_rad);
+
+    $parts[] = "crop={$pad_w}:{$pad_h}:{$sx}:{$sy}";
+    $parts[] = "rotate={$a_expr}:ow={$pad_w}:oh={$pad_h}:c=black";
+    $parts[] = "crop={$w}:{$h}:{$inner_x}:{$inner_y}";
     $parts[] = $scale;
 
     return implode(',', $parts);

@@ -851,6 +851,52 @@
     font-variant-numeric: tabular-nums;
 }
 
+.image_sequence_framing_rotation {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+}
+
+.image_sequence_framing_rotation_label {
+    color: #aeb0b6;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 0.15rem;
+}
+
+.image_sequence_framing_rotation_input {
+    width: 4.25rem;
+    padding: 0.15rem 0.3rem;
+    border: 1px solid #3a3b41;
+    border-radius: 3px;
+    background: #0f1013;
+    color: #e8e8ea;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.image_sequence_framing_rotation_unit {
+    color: #8b8d94;
+    font-size: 11px;
+}
+
+.image_sequence_framing_rot_nudge {
+    min-width: 1.6rem;
+    padding: 0.15rem 0.35rem !important;
+    line-height: 1.2;
+}
+
+.image_sequence_player_stage.is-framing-rotated {
+    overflow: hidden;
+}
+
+.image_sequence_player_stage.is-framing-rotated .image_sequence_omakase_player {
+    will-change: transform;
+    transform-box: fill-box;
+}
+
 .image_sequence_framing_source_dims {
     color: #8b8d94;
     font-size: 11px;

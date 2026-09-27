@@ -72,6 +72,7 @@ try {
                 'height' => getval('height', 0, true),
                 'source_width' => getval('source_width', 0, true),
                 'source_height' => getval('source_height', 0, true),
+                'rotation' => (float) getval('rotation', 0),
             ];
             $result = image_sequence_framing_save_box($ref, $input);
             break;

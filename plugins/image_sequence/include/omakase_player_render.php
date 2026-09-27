@@ -149,6 +149,8 @@ function image_sequence_render_omakase_player(array $opts): void
             'framingDownload' => $lang['image_sequence_framing_download'] ?? 'Download',
             'framingFps' => $lang['image_sequence_framing_fps'] ?? 'FPS',
             'framingFpsTitle' => $lang['image_sequence_framing_fps_title'] ?? 'Playback frame rate for the rendered MP4',
+            'framingRotation' => $lang['image_sequence_framing_rotation'] ?? 'Rotation',
+            'framingRotationTitle' => $lang['image_sequence_framing_rotation_title'] ?? 'Rotate image under this box (clockwise degrees)',
             'framingSize' => $lang['image_sequence_framing_size'] ?? 'Size',
             'framingSizeTitle' => $lang['image_sequence_framing_size_title'] ?? 'Output frame size for the rendered MP4',
         ],

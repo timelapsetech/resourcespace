@@ -88,6 +88,10 @@ function setStatus(text, isError) {
     el.toggleClass('image_sequence_status_error', !!isError);
 }
 
+function videoContentRect(state) {
+    return withClearedPlayerTransform(state, () => videoContentRectUnrotated(state));
+}
+
 /**
  * Locate the object-fit:contain picture rect inside the overlay (CSS pixels),
  * and the scale factors that map TRUE source pixels ↔ that rect.
@@ -95,7 +99,7 @@ function setStatus(text, isError) {
  * Browser zoom / player size / proxy resolution only affect the on-screen rect.
  * Box x/y/width/height are always in original source pixels.
  */
-function videoContentRect(state) {
+function videoContentRectUnrotated(state) {
     const host = document.getElementById(state.playerElementId);
     const overlay = document.getElementById('image_sequence_framing_overlay');
     if (!host || !overlay) {
@@ -185,8 +189,112 @@ function normalizeBox(box, sourceW, sourceH) {
         y,
         width: Math.max(2, width),
         height: Math.max(2, height),
+        rotation: normaliseRotation(box.rotation),
         tier: tierForWidth(Math.max(2, width), aspectW, aspectH),
     };
+}
+
+function normaliseRotation(value) {
+    let v = Number(value);
+    if (!Number.isFinite(v)) {
+        v = 0;
+    }
+    v = Math.max(-45, Math.min(45, v));
+    return Math.round(v * 10) / 10;
+}
+
+function playerRotateTarget(state) {
+    return document.getElementById(state.playerElementId);
+}
+
+function clearPlayerRotation(state) {
+    const targets = [];
+    if (state && state._rotateTarget) {
+        targets.push(state._rotateTarget);
+    }
+    const live = state ? playerRotateTarget(state) : null;
+    if (live && targets.indexOf(live) < 0) {
+        targets.push(live);
+    }
+    targets.forEach((el) => {
+        el.style.transform = '';
+        el.style.transformOrigin = '';
+    });
+    if (state) {
+        state._rotateTarget = null;
+        state._lastAppliedRotation = 0;
+    }
+    const stage = document.querySelector('.image_sequence_player_stage');
+    if (stage) {
+        stage.classList.remove('is-framing-rotated');
+    }
+}
+
+/**
+ * Measure layout with any preview rotation temporarily cleared (no paint yield).
+ */
+function withClearedPlayerTransform(state, fn) {
+    const target = state && state._rotateTarget;
+    if (!target) {
+        return fn();
+    }
+    const prevT = target.style.transform;
+    const prevO = target.style.transformOrigin;
+    target.style.transform = 'none';
+    target.style.transformOrigin = '';
+    try {
+        return fn();
+    } finally {
+        target.style.transform = prevT;
+        target.style.transformOrigin = prevO;
+    }
+}
+
+/**
+ * Rotate the playing image under the fixed axis-aligned box (selected box only).
+ */
+function applyPlayerRotation(state) {
+    if (!state || !state.visible) {
+        clearPlayerRotation(state);
+        return;
+    }
+    const selected = state.selectedId != null ? findBox(state, state.selectedId) : null;
+    const rotation = selected ? normaliseRotation(selected.rotation) : 0;
+    if (!selected || Math.abs(rotation) < 0.001) {
+        clearPlayerRotation(state);
+        return;
+    }
+
+    const host = playerRotateTarget(state);
+    const overlay = document.getElementById('image_sequence_framing_overlay');
+    if (!host || !overlay) {
+        clearPlayerRotation(state);
+        return;
+    }
+
+    // Content rect must be measured without the current rotate transform.
+    const content = withClearedPlayerTransform(state, () => videoContentRect(state));
+    if (!content) {
+        clearPlayerRotation(state);
+        return;
+    }
+
+    const overlayRect = overlay.getBoundingClientRect();
+    const hostRect = withClearedPlayerTransform(state, () => host.getBoundingClientRect());
+    const cx = content.left + ((selected.x + selected.width / 2) * content.cssPerSourceX);
+    const cy = content.top + ((selected.y + selected.height / 2) * content.cssPerSourceY);
+    const originX = cx + (overlayRect.left - hostRect.left);
+    const originY = cy + (overlayRect.top - hostRect.top);
+
+    host.style.transformOrigin = originX + 'px ' + originY + 'px';
+    host.style.transform = 'rotate(' + rotation + 'deg)';
+    state._rotateTarget = host;
+    state._lastAppliedRotation = rotation;
+
+    const stage = document.querySelector('.image_sequence_player_stage');
+    if (stage) {
+        stage.classList.add('is-framing-rotated');
+    }
 }
 
 function cloneBoxes(boxes) {
@@ -249,6 +357,7 @@ function addCenteredBox(state) {
             alt_file: null,
             alt_url: '',
             preview_url: '',
+            rotation: 0,
         }, state.sourceWidth, state.sourceHeight);
         box.dirty = true;
         state.boxes.push(box);
@@ -412,7 +521,10 @@ function renderOverlay(state) {
         const label = document.createElement('div');
         label.className = 'image_sequence_framing_box_label';
         label.textContent = (box.label || box.aspect_label || '')
-            + ' · ' + box.width + '×' + box.height + ' px';
+            + ' · ' + box.width + '×' + box.height + ' px'
+            + (Math.abs(normaliseRotation(box.rotation)) >= 0.1
+                ? ' · ' + normaliseRotation(box.rotation) + '°'
+                : '');
         el.appendChild(label);
 
         if (state.canEdit) {
@@ -484,6 +596,9 @@ function renderList(state) {
         meta.className = 'image_sequence_framing_meta';
         meta.textContent = (box.aspect_label || (box.aspect_w + ':' + box.aspect_h))
             + ' · ' + box.width + '×' + box.height + ' px'
+            + (Math.abs(normaliseRotation(box.rotation)) >= 0.1
+                ? ' · ' + normaliseRotation(box.rotation) + '°'
+                : '')
             + (box.dirty ? ' · ' + (lang.framingUnsaved || 'Unsaved') : '');
         head.appendChild(meta);
 
@@ -532,6 +647,70 @@ function renderList(state) {
         }
         li.appendChild(status);
 
+        if (state.canEdit && String(state.selectedId) === String(id)) {
+            const rotRow = document.createElement('div');
+            rotRow.className = 'image_sequence_framing_rotation';
+            rotRow.addEventListener('click', (e) => e.stopPropagation());
+
+            const rotLabel = document.createElement('label');
+            rotLabel.className = 'image_sequence_framing_rotation_label';
+            rotLabel.textContent = (lang.framingRotation || 'Rotation');
+            rotLabel.title = (lang.framingRotationTitle || 'Rotate image under this box (clockwise °)');
+            rotRow.appendChild(rotLabel);
+
+            const minus = document.createElement('button');
+            minus.type = 'button';
+            minus.className = 'image_sequence_framing_btn image_sequence_framing_rot_nudge';
+            minus.textContent = '−';
+            minus.title = '-0.1°';
+            minus.addEventListener('click', (e) => {
+                e.stopPropagation();
+                box.rotation = normaliseRotation((Number(box.rotation) || 0) - 0.1);
+                box.dirty = true;
+                renderAll(state);
+            });
+            rotRow.appendChild(minus);
+
+            const rotInput = document.createElement('input');
+            rotInput.type = 'number';
+            rotInput.className = 'image_sequence_framing_rotation_input';
+            rotInput.min = '-45';
+            rotInput.max = '45';
+            rotInput.step = '0.1';
+            rotInput.value = String(normaliseRotation(box.rotation));
+            rotInput.title = (lang.framingRotationTitle || 'Rotate image under this box (clockwise °)');
+            rotInput.addEventListener('change', () => {
+                box.rotation = normaliseRotation(rotInput.value);
+                box.dirty = true;
+                renderAll(state);
+            });
+            rotInput.addEventListener('input', () => {
+                box.rotation = normaliseRotation(rotInput.value);
+                applyPlayerRotation(state);
+            });
+            rotRow.appendChild(rotInput);
+
+            const deg = document.createElement('span');
+            deg.className = 'image_sequence_framing_rotation_unit';
+            deg.textContent = '°';
+            rotRow.appendChild(deg);
+
+            const plus = document.createElement('button');
+            plus.type = 'button';
+            plus.className = 'image_sequence_framing_btn image_sequence_framing_rot_nudge';
+            plus.textContent = '+';
+            plus.title = '+0.1°';
+            plus.addEventListener('click', (e) => {
+                e.stopPropagation();
+                box.rotation = normaliseRotation((Number(box.rotation) || 0) + 0.1);
+                box.dirty = true;
+                renderAll(state);
+            });
+            rotRow.appendChild(plus);
+
+            li.appendChild(rotRow);
+        }
+
         if (state.canEdit) {
             const actions = document.createElement('div');
             actions.className = 'image_sequence_framing_actions';
@@ -555,7 +734,7 @@ function renderList(state) {
                 || box.render_status === 'queued' || box.render_status === 'processing';
             renderBtn.title = box.dirty || !(box.ref > 0)
                 ? 'Save the box before rendering'
-                : 'Render 4K crop using current in/out';
+                : 'Render crop using current in/out';
             renderBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 renderBox(state, box);
@@ -587,6 +766,7 @@ function renderList(state) {
 function renderAll(state) {
     renderOverlay(state);
     renderList(state);
+    applyPlayerRotation(state);
 }
 
 function pointerToSource(state, clientX, clientY) {
@@ -801,6 +981,7 @@ function wireOverlayInteractions(state) {
                 alt_file: null,
                 alt_url: '',
                 preview_url: '',
+                rotation: 0,
             }, state.sourceWidth, state.sourceHeight);
             box.dirty = true;
             state.boxes.push(box);
@@ -836,6 +1017,7 @@ function saveBox(state, box) {
         height: box.height,
         source_width: state.sourceWidth,
         source_height: state.sourceHeight,
+        rotation: normaliseRotation(box.rotation),
     }, state.csrfFraming)
         .done((data) => {
             if (data && data.ok && data.box) {
@@ -1053,7 +1235,10 @@ function observeResize(state) {
         window.addEventListener('resize', state._onResize);
         return;
     }
-    resizeObserver = new ResizeObserver(() => renderOverlay(state));
+    resizeObserver = new ResizeObserver(() => {
+        renderOverlay(state);
+        applyPlayerRotation(state);
+    });
     resizeObserver.observe(stage);
 }
 
@@ -1103,8 +1288,14 @@ export function initFramingBoxes(config) {
     }
 
     framingState = state;
-    state._onResize = () => renderOverlay(state);
-    state._onFs = () => setTimeout(() => renderOverlay(state), 50);
+    state._onResize = () => {
+        renderOverlay(state);
+        applyPlayerRotation(state);
+    };
+    state._onFs = () => setTimeout(() => {
+        renderOverlay(state);
+        applyPlayerRotation(state);
+    }, 50);
 
     wireToolbar(state);
     wireOverlayInteractions(state);
@@ -1167,6 +1358,7 @@ export function destroyFramingBoxes() {
         resizeObserver = null;
     }
     if (framingState) {
+        clearPlayerRotation(framingState);
         if (framingState._onResize) {
             window.removeEventListener('resize', framingState._onResize);
         }
