@@ -647,7 +647,8 @@ function image_sequence_framing_export_resource(int $resource)
         'origin' => 'top_left',
         'rotation_convention' => 'degrees_clockwise_around_box_center',
         'notes' => 'Box x/y/width/height are axis-aligned in source pixels. '
-            . 'Apply rotation clockwise around the box centre, then crop the AABB.',
+            . 'Rotation is degrees clockwise around the box centre: the image is '
+            . 'rotated under the fixed box, then the box AABB is cropped.',
         'source_width' => (int) ($dims['width'] ?? 0),
         'source_height' => (int) ($dims['height'] ?? 0),
         'fps' => $fps,
@@ -1062,11 +1063,11 @@ function image_sequence_framing_encode_options(string $size = '4k'): string
     $g = (int) $preset['g'];
     $keyint = max(12, (int) round($g / 2));
 
-    // High + yuv420p + avc1 + faststart = QuickTime / most players.
+    // High + yuv420p (tv range) + avc1 + faststart = QuickTime / most players.
     return '-f mp4 -c:v libx264 -b:v ' . $bitrate
         . ' -maxrate ' . $maxrate
         . ' -bufsize ' . $bufsize
-        . ' -pix_fmt yuv420p -profile:v high -level ' . $preset['level']
+        . ' -pix_fmt yuv420p -color_range tv -profile:v high -level ' . $preset['level']
         . ' -preset medium -g ' . $g . ' -keyint_min ' . $keyint
         . ' -bf 2 -tag:v avc1 -movflags +faststart';
 }
@@ -1371,6 +1372,9 @@ function image_sequence_framing_set_render_status(int $box_ref, string $status, 
  *
  * Rotation is clockwise-positive degrees around the box centre. Preview keeps
  * the box axis-aligned and rotates the image under it; this filter matches that.
+ *
+ * Ends with format=yuv420p so JPEG/still sequences cannot slip through as
+ * yuvj420p (full-range), which QuickTime often refuses to open.
  */
 function image_sequence_framing_vf(array $box, int $target_w, int $target_h, string $orient_vf = ''): string
 {
@@ -1378,10 +1382,37 @@ function image_sequence_framing_vf(array $box, int $target_w, int $target_h, str
     $y = (int) $box['y'];
     $w = (int) $box['width'];
     $h = (int) $box['height'];
+    // Even dimensions / origins for yuv420p chroma.
+    $w -= ($w % 2);
+    $h -= ($h % 2);
+    $w = max(2, $w);
+    $h = max(2, $h);
+    $x -= ($x % 2);
+    $y -= ($y % 2);
+    $x = max(0, $x);
+    $y = max(0, $y);
     $sw = max($w, (int) ($box['source_width'] ?? $w));
     $sh = max($h, (int) ($box['source_height'] ?? $h));
+    $sw -= ($sw % 2);
+    $sh -= ($sh % 2);
+    $sw = max($w, $sw);
+    $sh = max($h, $sh);
+    if ($x + $w > $sw) {
+        $x = max(0, $sw - $w);
+        $x -= ($x % 2);
+    }
+    if ($y + $h > $sh) {
+        $y = max(0, $sh - $h);
+        $y -= ($y % 2);
+    }
+    $target_w -= ($target_w % 2);
+    $target_h -= ($target_h % 2);
+    $target_w = max(2, $target_w);
+    $target_h = max(2, $target_h);
     $rotation = image_sequence_framing_normalise_rotation((float) ($box['rotation'] ?? 0));
-    $scale = "scale={$target_w}:{$target_h}:flags=lanczos,setsar=1";
+    // Force limited-range yuv420p: JPEG stills otherwise stay yuvj420p (pc),
+    // which several QuickTime builds refuse to open.
+    $tail = "scale={$target_w}:{$target_h}:flags=lanczos:in_range=auto:out_range=tv,format=yuv420p,setsar=1";
     $parts = [];
     if ($orient_vf !== '') {
         $parts[] = $orient_vf;
@@ -1389,47 +1420,88 @@ function image_sequence_framing_vf(array $box, int $target_w, int $target_h, str
 
     if (abs($rotation) < 0.001) {
         $parts[] = "crop={$w}:{$h}:{$x}:{$y}";
-        $parts[] = $scale;
+        $parts[] = $tail;
 
         return implode(',', $parts);
     }
 
     // Patch large enough for the axis-aligned AABB of the rotated box, then
-    // rotate around the patch centre and crop back to w×h.
+    // rotate the image under the fixed box and crop back to w×h.
     $rad = deg2rad($rotation);
     $cos = abs(cos($rad));
     $sin = abs(sin($rad));
     $pad_w = (int) ceil($w * $cos + $h * $sin);
     $pad_h = (int) ceil($w * $sin + $h * $cos);
-    $pad_w += ($pad_w % 2);
-    $pad_h += ($pad_h % 2);
     $pad_w = max($w + 2, $pad_w);
     $pad_h = max($h + 2, $pad_h);
+    $pad_w += ($pad_w % 2); // even
+    $pad_h += ($pad_h % 2);
 
     $cx = $x + ($w / 2.0);
     $cy = $y + ($h / 2.0);
     $sx = (int) floor($cx - ($pad_w / 2.0));
     $sy = (int) floor($cy - ($pad_h / 2.0));
-    $sx = max(0, min($sx, max(0, $sw - $pad_w)));
-    $sy = max(0, min($sy, max(0, $sh - $pad_h)));
-    // If the padded patch would exceed the frame, shrink to what fits.
+    // Prefer keeping the box inside the patch; clamp patch into the frame.
+    if ($sx < 0) {
+        $sx = 0;
+    }
+    if ($sy < 0) {
+        $sy = 0;
+    }
+    if ($sx + $pad_w > $sw) {
+        $sx = max(0, $sw - $pad_w);
+    }
+    if ($sy + $pad_h > $sh) {
+        $sy = max(0, $sh - $pad_h);
+    }
+    $sx -= ($sx % 2);
+    $sy -= ($sy % 2);
+    $sx = max(0, $sx);
+    $sy = max(0, $sy);
+    // Shrink patch if the source cannot fit the ideal pad (near edges).
     $pad_w = min($pad_w, $sw - $sx);
     $pad_h = min($pad_h, $sh - $sy);
     $pad_w -= ($pad_w % 2);
     $pad_h -= ($pad_h % 2);
+    // Must still cover the original box.
     $pad_w = max($w, $pad_w);
     $pad_h = max($h, $pad_h);
+    if ($sx + $pad_w > $sw) {
+        $sx = max(0, $sw - $pad_w);
+        $sx -= ($sx % 2);
+        $pad_w = min($pad_w, $sw - $sx);
+        $pad_w -= ($pad_w % 2);
+        $pad_w = max($w, $pad_w);
+    }
+    if ($sy + $pad_h > $sh) {
+        $sy = max(0, $sh - $pad_h);
+        $sy -= ($sy % 2);
+        $pad_h = min($pad_h, $sh - $sy);
+        $pad_h -= ($pad_h % 2);
+        $pad_h = max($h, $pad_h);
+    }
 
-    $inner_x = (int) max(0, floor(($pad_w - $w) / 2));
-    $inner_y = (int) max(0, floor(($pad_h - $h) / 2));
-    // FFmpeg rotate uses counter-clockwise for positive angles; UI is clockwise.
-    $ffmpeg_rad = -$rad;
-    $a_expr = sprintf('%.10F', $ffmpeg_rad);
+    // Box position inside the padded patch (accounts for edge clamping).
+    $inner_x = (int) max(0, $x - $sx);
+    $inner_y = (int) max(0, $y - $sy);
+    $inner_x -= ($inner_x % 2);
+    $inner_y -= ($inner_y % 2);
+    if ($inner_x + $w > $pad_w) {
+        $inner_x = max(0, $pad_w - $w);
+        $inner_x -= ($inner_x % 2);
+    }
+    if ($inner_y + $h > $pad_h) {
+        $inner_y = max(0, $pad_h - $h);
+        $inner_y -= ($inner_y % 2);
+    }
+
+    // FFmpeg rotate: positive radians = clockwise (same as CSS / UI).
+    $a_expr = sprintf('%.10F', $rad);
 
     $parts[] = "crop={$pad_w}:{$pad_h}:{$sx}:{$sy}";
-    $parts[] = "rotate={$a_expr}:ow={$pad_w}:oh={$pad_h}:c=black";
+    $parts[] = "rotate=a={$a_expr}:ow={$pad_w}:oh={$pad_h}:c=black";
     $parts[] = "crop={$w}:{$h}:{$inner_x}:{$inner_y}";
-    $parts[] = $scale;
+    $parts[] = $tail;
 
     return implode(',', $parts);
 }
